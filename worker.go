@@ -7,10 +7,14 @@ import (
 )
 
 type Result struct {
-	ID             string
-	Url            string
-	ExpectedStatus int
-	Status         map[string]interface{}
+	ID            string
+	Status        string
+	Status_Code   int
+	Method        string
+	Response_time int
+	Checked_at    time.Time
+	Error         string
+	Data          map[string]interface{}
 }
 
 func startWorker(site Site, interval int, reschan chan Result, wrk_ctx context.Context, wg *sync.WaitGroup) {
@@ -19,22 +23,21 @@ func startWorker(site Site, interval int, reschan chan Result, wrk_ctx context.C
 	defer ticker.Stop()
 	for {
 		select {
-		case <-ticker.C:
-			res := helper(site)
-			reschan <- res
 		case <-wrk_ctx.Done():
 			wg.Done()
 			return
+		case <-ticker.C:
+			res := dispatcher(site)
+			reschan <- res
 		}
 	}
 
 }
 
-func helper(site Site) Result {
+func dispatcher(site Site) Result {
 	httpctx, cancel := context.WithTimeout(context.Background(), time.Duration(site.Timeout)*time.Millisecond)
-	res := Result{ID: site.ID, Url: site.Url, ExpectedStatus: site.ExpectedStatus}
 	defer cancel()
 
-	res = methodFunc[site.Method](site, httpctx, res)
+	res := methodFunc[site.Method](site, httpctx)
 	return res
 }

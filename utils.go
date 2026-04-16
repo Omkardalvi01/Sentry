@@ -5,39 +5,53 @@ import (
 	"errors"
 	"log"
 	"net/http"
-	"sync"
+	"time"
 )
 
-var methodFunc = map[string]func(site Site, ctx context.Context, res Result) Result{
+var methodFunc = map[string]func(site Site, ctx context.Context) Result{
 	"GET": getFunc,
 }
 
-func startLogger(reschan chan Result, wg *sync.WaitGroup) {
-	for result := range reschan {
-		log.Printf("id : %s , url : %s , exp_status: %d , additional_info : %v\n", result.ID, result.Url, result.ExpectedStatus, result.Status)
-	}
-	wg.Done()
-}
+func getFunc(site Site, ctx context.Context) Result {
+	res := Result{ID: site.ID, Method: site.Method, Checked_at: time.Now()}
 
-func getFunc(site Site, ctx context.Context, res Result) Result {
+	setStatus := func(success bool, status string, status_code int, errStr string) {
+		if !success {
+			res.Error = errStr
+		}
+		res.Status = status
+		res.Status_Code = status_code
+	}
+
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, site.Url, nil)
 	if err != nil {
-		res.Status = map[string]interface{}{"returned_status": http.StatusInternalServerError, "Same": false, "Error msg": err.Error()}
+		setStatus(false, "DOWN", http.StatusInternalServerError, err.Error())
 		return res
 	}
 
 	resp, err := http.DefaultClient.Do(req)
 	if errors.Is(err, context.DeadlineExceeded) {
-		res.Status = map[string]interface{}{"returned_status": http.StatusInternalServerError, "Same": false, "Error msg": "timed out "}
+		setStatus(false, "DOWN", http.StatusInternalServerError, "Request was timed out")
 		return res
 	}
 	if err != nil {
-		res.Status = map[string]interface{}{"returned_status": http.StatusInternalServerError, "Same": false, "Error msg": err.Error()}
+		setStatus(false, "DOWN", http.StatusInternalServerError, err.Error())
 		return res
 	}
 	defer resp.Body.Close()
 
-	res.Status = map[string]interface{}{"returned_status": resp.StatusCode, "Same": resp.StatusCode == site.ExpectedStatus, "Additional": resp.StatusCode}
+	setStatus(true, "UP", http.StatusOK, "")
 
 	return res
+}
+
+func startLogger(reschan chan Result) {
+	for result := range reschan {
+		if result.Status == "DOWN" {
+			log.Printf("id: %s , method: %s status:%s status_code:%d, checked_at:%v error:%s\n", result.ID, result.Method, result.Status, result.Status_Code, result.Checked_at.Format("2006-01-02 3:4:5 pm"), result.Error)
+			continue
+		}
+		log.Printf("id: %s method: %s status:%s status_code:%d, checked_at:%v\n", result.ID, result.Method, result.Status, result.Status_Code, result.Checked_at.Format("2006-01-02 3:4:5 pm"))
+	}
+
 }

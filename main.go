@@ -17,20 +17,23 @@ type MonitorSites struct {
 }
 
 type Site struct {
-	ID             string `json:"id"`
-	Name           string `json:"name"`
-	Url            string `json:"url"`
-	Method         string `json:"method"`
-	ExpectedStatus int    `json:"expected_status"`
-	Timeout        int    `json:"timeout_ms"`
+	ID             string                 `json:"id"`
+	Name           string                 `json:"name"`
+	Url            string                 `json:"url"`
+	Method         string                 `json:"method"`
+	ExpectedStatus int                    `json:"expected_status"`
+	Timeout        int                    `json:"timeout_ms"`
+	ExpectedResult map[string]interface{} `json:"expected_result"`
 }
 
 func main() {
+	log.Print("Stating Service")
 	killChan := make(chan os.Signal, 1)
 	signal.Notify(killChan, syscall.SIGINT, syscall.SIGTERM)
 	var wg sync.WaitGroup
 	interval := flag.Int("interval", 5, "Interval between checks in seconds")
 
+	log.Print("Looking for targets.json file")
 	targets, err := os.Open("target.json")
 	if err != nil {
 		log.Fatalf("Error with opening targets.json: %v", err)
@@ -42,6 +45,7 @@ func main() {
 		log.Fatalf("Error converting target into bytes: %e", err)
 	}
 
+	log.Print("Unpacking the json file")
 	var Msites MonitorSites
 	err = json.Unmarshal([]byte(byteVal), &Msites)
 	if err != nil {
@@ -52,12 +56,12 @@ func main() {
 
 	reschan := make(chan Result, len(Msites.Sites))
 	for i := range len(Msites.Sites) {
+		log.Printf("Worker %d started", i)
 		wg.Add(1)
 		go startWorker(Msites.Sites[i], *interval, reschan, worker_ctx, &wg)
 	}
 
-	wg.Add(1)
-	go startLogger(reschan, &wg)
+	go startLogger(reschan)
 
 	// Shutdown code & clean up code
 	sig := <-killChan
