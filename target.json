@@ -1,0 +1,20 @@
+{
+    "sites" : [ 
+    {
+        "id": "google-search",
+        "name": "Google Main",
+        "url": "https://www.google.com",
+        "method": "GET",
+        "expected_status": 200,
+        "timeout_ms": 2000
+    },
+    {
+        "id": "github-api",
+        "name": "GitHub API",
+        "url": "https://api.github.com",
+        "method": "GET",
+        "expected_status": 200,
+        "timeout_ms": 5000
+    }
+    ]
+}
