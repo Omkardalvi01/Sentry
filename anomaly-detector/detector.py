@@ -141,9 +141,10 @@ class ModelRegistry:
 
 class DetectorService:
     """Orchestrator for training and predicting with atomic model swaps."""
-    def __init__(self, db_path: str):
+    def __init__(self, db_path: str, cache=None):
         self.db_path = db_path
         self.registry = ModelRegistry(db_path)
+        self.cache = cache  # EndpointCache instance, or None if Redis is unavailable
         self.active_model = self.registry.load_latest_model()
         
         if not self.active_model:
@@ -151,11 +152,27 @@ class DetectorService:
             self.train_new_model()
 
     def predict(self, event: dict) -> dict:
+        method = event.get('method')
+        path = event.get('path')
+
+        # Cache lookup — skip full statistical evaluation on hit
+        if self.cache is not None:
+            cached = self.cache.get(method, path)
+            if cached is not None:
+                return cached
+
         # Grab a local reference for thread-safety (atomic swap)
-        current_model = self.active_model 
+        current_model = self.active_model
         if current_model is None:
             return {"error": "No trained model available yet."}
-        return current_model.predict(event)
+
+        result = current_model.predict(event)
+
+        # Store non-anomalous results in cache
+        if self.cache is not None:
+            self.cache.set(method, path, result)
+
+        return result
 
     def train_new_model(self):
         print("Training new anomaly detection model...")
@@ -217,10 +234,15 @@ class DetectorService:
             
             # Save to registry
             self.registry.save_model(new_model)
-            
-            # Atomic swap
+
+            # Atomic swap — in-flight requests using the old model finish safely;
+            # the next request will pick up new_model.
             self.active_model = new_model
             print(f"✓ New model '{new_model.version_id}' activated seamlessly. Tracking {len(known_endpoints)} endpoints.")
+
+            # Flush stale cache entries so the new model's predictions take effect immediately
+            if self.cache is not None:
+                self.cache.flush_model_cache()
             
         finally:
             conn.close()
