@@ -28,8 +28,13 @@ A graph-driven DAST tool that ingests API specifications, builds a knowledge gra
                          ▼
                   ┌──────────────────────┐     ┌──────────────────┐
                   │  Anomaly Detector    │────▶│  POST /predict   │
-                  │  (Python + FastAPI)  │     │  Model Registry  │
-                  └──────────────────────┘     └──────────────────┘
+                  │  (Python + FastAPI)  ├─┐   │  Model Registry  │
+                  └──────────────────────┘ │   └──────────────────┘
+                                           ▼
+                                    ┌─────────────┐
+                                    │ Redis Cache │
+                                    │ (LFU + TTL) │
+                                    └─────────────┘
 ```
 
 ## Features
@@ -65,6 +70,7 @@ A graph-driven DAST tool that ingests API specifications, builds a knowledge gra
 - **Model Registry** — every trained model is serialized to JSON and persisted in SQLite with a unique version ID
 - **Zero-downtime model swaps** — Python's GIL guarantees atomic pointer assignment; in-flight predictions finish on the old model while new requests route to the freshly trained model
 - **24-hour auto-retraining** via `APScheduler`
+- **Redis Caching Layer** — Integrates a Redis cache to store non-anomalous results. Programmatically configures `maxmemory` and `allkeys-lfu` eviction to bypass re-evaluation for hot known-normal traffic, with a 5-minute TTL staleness guard.
 
 ---
 
@@ -75,6 +81,7 @@ A graph-driven DAST tool that ingests API specifications, builds a knowledge gra
 - **Go 1.23+**
 - **Python 3.10+**
 - **Memgraph** running on `bolt://localhost:7687`
+- **Redis** (optional, for anomaly detector caching — auto-degrades if down)
 - **Kafka** (optional, for traffic consumption)
 
 ### Build the Go binary
@@ -227,6 +234,9 @@ ORDER BY f.severity;
 | Variable | Default | Description |
 |:---|:---|:---|
 | `SENTRY_DB_PATH` | `../traffic.db` | Path to the SQLite database |
+| `SENTRY_REDIS_URL` | `redis://localhost:6379` | URL to the Redis instance |
+| `SENTRY_CACHE_TTL` | `300` | TTL in seconds for cached predictions |
+| `SENTRY_REDIS_MAXMEMORY` | `64mb` | Limit for the Redis memory usage configuration |
 
 ---
 
@@ -286,3 +296,4 @@ ORDER BY f.severity;
 | Schema Validation | `santhosh-tekuri/jsonschema/v6` |
 | Anomaly Detection | Python 3 + FastAPI |
 | Model Scheduling | APScheduler |
+| Result Caching | Redis (LFU eviction policy) |
