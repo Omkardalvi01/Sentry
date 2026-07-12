@@ -33,3 +33,12 @@ Thumbs.db
 
 # Vendor (if used)
 /vendor/
+*.db
+
+# Python
+anomaly-detector/venv/
+__pycache__/
+*.pyc
+
+# Downloaded test files
+swagger.json

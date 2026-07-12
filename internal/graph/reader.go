@@ -49,8 +49,6 @@ func (c *Client) ReadOperations(ctx context.Context, specTitle, specVersion stri
 		}
 		// The path is stored on the Operation node as "path" property
 		if p := stringVal(record, "path"); p != "" {
-			op.OperationID = op.OperationID // keep as-is
-			// Store path in a tag-like way — we'll use a custom field
 			op.Tags = []string{p} // Re-purpose: first tag = path template
 		}
 		ops = append(ops, op)
