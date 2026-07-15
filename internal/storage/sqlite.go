@@ -45,7 +45,12 @@ func (s *TrafficStore) InitDB() error {
 		status_code INTEGER,
 		response_headers TEXT,
 		response_body TEXT,
-		timestamp DATETIME
+		timestamp DATETIME,
+		graph_path_template TEXT,
+		graph_deprecated BOOLEAN,
+		graph_security TEXT,
+		graph_tag TEXT,
+		graph_dependency_count INTEGER
 	);
 	CREATE INDEX IF NOT EXISTS idx_traffic_path ON api_traffic(path);
 	CREATE INDEX IF NOT EXISTS idx_traffic_method ON api_traffic(method);
@@ -71,8 +76,9 @@ func (s *TrafficStore) InsertBatch(ctx context.Context, events []model.TrafficEv
 	stmt, err := tx.PrepareContext(ctx, `
 		INSERT INTO api_traffic (
 			request_id, method, path, query_params, request_headers, request_body,
-			status_code, response_headers, response_body, timestamp
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			status_code, response_headers, response_body, timestamp,
+			graph_path_template, graph_deprecated, graph_security, graph_tag, graph_dependency_count
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(request_id) DO NOTHING
 	`)
 	if err != nil {
@@ -96,6 +102,11 @@ func (s *TrafficStore) InsertBatch(ctx context.Context, events []model.TrafficEv
 			string(resH),
 			e.ResponseBody,
 			e.Timestamp,
+			e.GraphPathTemplate,
+			e.GraphDeprecated,
+			e.GraphSecurity,
+			e.GraphTag,
+			e.GraphDependencyCount,
 		)
 		if err != nil {
 			tx.Rollback()

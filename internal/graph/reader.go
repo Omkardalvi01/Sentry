@@ -295,3 +295,61 @@ func boolVal(record *neo4j.Record, key string) bool {
 	}
 	return b
 }
+
+// GraphContext holds the topology features extracted from the graph.
+type GraphContext struct {
+	PathTemplate    string
+	Deprecated      bool
+	Security        string
+	Tag             string
+	DependencyCount int
+}
+
+// ResolveTrafficContext performs a constant-time Cypher traversal to extract features.
+func (c *Client) ResolveTrafficContext(ctx context.Context, method, pathTemplate string) (GraphContext, error) {
+	session := c.Session(ctx)
+	defer session.Close(ctx)
+
+	// Fetch properties and traverse [:CALLS*] to find downstream dependency count
+	query := `
+		MATCH (p:Path {template: $template})-[:HAS_OPERATION]->(o:Operation {method: $method})
+		OPTIONAL MATCH (o)-[:CALLS*]->(dep)
+		RETURN p.template AS template,
+		       o.deprecated AS deprecated,
+		       o.security AS security,
+		       o.tags AS tags,
+		       count(distinct dep) AS depCount
+	`
+
+	result, err := session.Run(ctx, query, map[string]interface{}{
+		"template": pathTemplate,
+		"method":   method,
+	})
+	if err != nil {
+		return GraphContext{}, fmt.Errorf("running resolve query: %w", err)
+	}
+
+	if result.Next(ctx) {
+		record := result.Record()
+		gc := GraphContext{
+			PathTemplate:    stringVal(record, "template"),
+			Deprecated:      boolVal(record, "deprecated"),
+			Security:        stringVal(record, "security"),
+			DependencyCount: int(record.Values[4].(int64)),
+		}
+		
+		// Tags is stored as JSON string or string array? In ingestor, tags might be string array.
+		// For now we try to safely extract it. 
+		if val, ok := record.Get("tags"); ok && val != nil {
+			if tags, isArray := val.([]interface{}); isArray && len(tags) > 0 {
+				gc.Tag = fmt.Sprintf("%v", tags[0])
+			} else if tagsStr, isStr := val.(string); isStr {
+				gc.Tag = tagsStr
+			}
+		}
+
+		return gc, nil
+	}
+
+	return GraphContext{}, fmt.Errorf("not found in graph")
+}

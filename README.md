@@ -57,9 +57,11 @@ A graph-driven DAST tool that ingests API specifications, builds a knowledge gra
 - **Baseline Differential Analysis** — probes a guaranteed non-existent path on startup to fingerprint catch-all routes, suppressing false positives from WAFs and wildcard handlers
 - **JSON Schema Validation** — validates response bodies against the OpenAPI schema using `jsonschema/v6`. Schema-matching responses are `CRITICAL`; non-matching responses are downgraded to `MEDIUM`
 - **Retirement Keyword Heuristics** — detects gracefully retired endpoints by scanning response bodies for keywords like "deprecated", "sunset", "retired"
+- **Graph-Calculated Blast Radius** — The threat classification engine now calculates the dynamic risk score using the actual downstream dependency chain traversed from the target endpoint in the graph database.
 
 ### 4. Kafka Traffic Consumer
 - Consumes real-time API gateway traffic logs from a Kafka topic
+- **Live Graph-Context Resolving** — When a log packet arrives via Kafka, the Go engine now runs a high-speed, constant-time Cypher traversal against the graph before talking to Python. It resolves the exact path template, verifies if the route is marked deprecated, and extracts the expected SecurityScheme and associated Tag.
 - Stores raw request/response data in a local **SQLite** database (`traffic.db`) with batched transactions for high throughput
 - Query parameters are stored in a separate column for easy filtering
 
@@ -67,6 +69,7 @@ A graph-driven DAST tool that ingests API specifications, builds a knowledge gra
 - **Statistical engine** using only Python's standard library (`statistics`, `sqlite3`) — no NumPy/Pandas/Scikit-Learn
 - **Categorical anomalies** — flags unseen `(method, path)` combinations as Shadow APIs
 - **Numerical anomalies** — Z-score analysis on request/response body lengths per endpoint
+- **Topology-Aware Machine Learning** — The Isolation Forest model now accepts live Graph Topology Features (e.g., whether the endpoint is deprecated in the graph, whether it requires authentication, and its downstream microservice dependency count).
 - **Model Registry** — every trained model is serialized to JSON and persisted in SQLite with a unique version ID
 - **Zero-downtime model swaps** — Python's GIL guarantees atomic pointer assignment; in-flight predictions finish on the old model while new requests route to the freshly trained model
 - **24-hour auto-retraining** via `APScheduler`

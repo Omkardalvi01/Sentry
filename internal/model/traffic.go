@@ -14,4 +14,11 @@ type TrafficEvent struct {
 	ResponseHeaders map[string]string `json:"response_headers"`
 	ResponseBody    string            `json:"response_body"`
 	Timestamp       time.Time         `json:"timestamp"`
+
+	// Graph topology features
+	GraphPathTemplate    string `json:"graph_path_template"`
+	GraphDeprecated      bool   `json:"graph_deprecated"`
+	GraphSecurity        string `json:"graph_security"`
+	GraphTag             string `json:"graph_tag"`
+	GraphDependencyCount int    `json:"graph_dependency_count"`
 }

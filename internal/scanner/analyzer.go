@@ -1,36 +1,53 @@
 package scanner
 
 import (
+	"context"
+	"fmt"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
 
+	"github.com/Omkardalvi01/sentry/internal/graph"
 	"github.com/Omkardalvi01/sentry/internal/model"
 )
 
 // Analyze evaluates a ProbeResult and returns a Finding if a zombie was detected.
 // Returns nil if the result is not interesting.
-func Analyze(result *model.ProbeResult, baseline *model.ProbeResult) *model.Finding {
+func Analyze(ctx context.Context, result *model.ProbeResult, baseline *model.ProbeResult, graphClient *graph.Client) *model.Finding {
 	if result.Error != nil {
 		return nil // Connection failed — endpoint not reachable
 	}
 
 	probe := result.Probe
+	var finding *model.Finding
+
 	switch probe.Strategy {
 	case model.StrategyDeprecatedAlive:
-		return analyzeDeprecatedAlive(result, baseline)
+		finding = analyzeDeprecatedAlive(result, baseline)
 	case model.StrategyVersionProbe:
-		return analyzeVersionProbe(result, baseline)
+		finding = analyzeVersionProbe(result, baseline)
 	case model.StrategyMethodProbe:
-		return analyzeMethodProbe(result, baseline)
+		finding = analyzeMethodProbe(result, baseline)
 	case model.StrategyShadowPath:
-		return analyzeShadowPath(result, baseline)
+		finding = analyzeShadowPath(result, baseline)
 	case model.StrategyAuthBypass:
-		return analyzeAuthBypass(result, baseline)
-	default:
-		return nil
+		finding = analyzeAuthBypass(result, baseline)
 	}
+
+	if finding != nil && graphClient != nil {
+		// Calculate Blast Radius
+		gc, err := graphClient.ResolveTrafficContext(ctx, finding.Method, finding.Path)
+		if err == nil && gc.DependencyCount > 0 {
+			// Upgrade severity based on blast radius
+			if finding.Severity == model.SeverityLow || finding.Severity == model.SeverityMedium {
+				finding.Severity = model.SeverityHigh
+			}
+			finding.Description += fmt.Sprintf(" (Graph-Calculated Blast Radius: High! Traversed %d downstream dependencies)", gc.DependencyCount)
+		}
+	}
+
+	return finding
 }
 
 func analyzeDeprecatedAlive(r *model.ProbeResult, baseline *model.ProbeResult) *model.Finding {

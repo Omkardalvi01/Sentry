@@ -50,6 +50,13 @@ class TrafficEvent(BaseModel):
     response_body: Optional[str] = ""
     timestamp: str
 
+    # Graph Topology Features
+    graph_path_template: Optional[str] = ""
+    graph_deprecated: Optional[bool] = False
+    graph_security: Optional[str] = ""
+    graph_tag: Optional[str] = ""
+    graph_dependency_count: Optional[int] = 0
+
 @app.post("/predict")
 def predict_anomaly(event: TrafficEvent):
     """

@@ -1,6 +1,6 @@
-fastapi
-uvicorn
-pydantic
-apscheduler
-redis
-
+fastapi==0.110.0
+uvicorn==0.28.0
+apscheduler==3.10.4
+redis==5.0.3
+scikit-learn==1.4.1.post1
+numpy==1.26.4

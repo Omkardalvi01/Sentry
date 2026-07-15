@@ -1,18 +1,39 @@
 import sqlite3
-import statistics
 import json
-from collections import defaultdict
 import uuid
 import datetime
+import base64
+import pickle
+import numpy as np
+from sklearn.ensemble import IsolationForest
+
+def extract_features(event: dict) -> list:
+    """Extracts numerical and graph topology features for the Isolation Forest model."""
+    req_len = len(event.get('request_body') or "")
+    res_len = len(event.get('response_body') or "")
+    
+    # Topology features
+    is_deprecated = 1.0 if event.get('graph_deprecated') else 0.0
+    has_auth = 1.0 if event.get('graph_security') else 0.0
+    dep_count = float(event.get('graph_dependency_count') or 0)
+    
+    # status code
+    status = float(event.get('status_code') or 200)
+
+    return [req_len, res_len, is_deprecated, has_auth, dep_count, status]
 
 class ModelVersion:
     """Immutable trained model state for anomaly prediction."""
-    def __init__(self, version_id: str, created_at: str, known_endpoints: set, known_status_codes: set, numerical_baselines: dict):
+    def __init__(self, version_id: str, created_at: str, known_endpoints: set, known_status_codes: set, ml_model_bytes: bytes = None, ml_model=None):
         self.version_id = version_id
         self.created_at = created_at
         self.known_endpoints = known_endpoints
         self.known_status_codes = known_status_codes
-        self.numerical_baselines = numerical_baselines
+        
+        self.ml_model_bytes = ml_model_bytes
+        self.ml_model = ml_model
+        if self.ml_model is None and ml_model_bytes:
+            self.ml_model = pickle.loads(ml_model_bytes)
 
     def predict(self, event: dict) -> dict:
         reasons = []
@@ -21,12 +42,10 @@ class ModelVersion:
         method = event.get('method')
         path = event.get('path')
         status_code = event.get('status_code')
-        req_body = event.get('request_body') or ""
-        res_body = event.get('response_body') or ""
         
         endpoint_key = f"{method} {path}"
         
-        # 1. Categorical Checks
+        # 1. Categorical Checks (Shadow APIs)
         if self.known_endpoints and endpoint_key not in self.known_endpoints:
             reasons.append(f"Unseen endpoint: {method} {path} (Shadow API)")
             score += 0.8
@@ -35,29 +54,21 @@ class ModelVersion:
             reasons.append(f"Unseen status code: {status_code}")
             score += 0.4
             
-        # 2. Numerical Checks (Z-score)
-        if endpoint_key in self.numerical_baselines:
-            baseline = self.numerical_baselines[endpoint_key]
-            
-            req_len = len(req_body)
-            if baseline['req_std'] > 0:
-                z_req = abs(req_len - baseline['req_mean']) / baseline['req_std']
-                if z_req > 3.0:
-                    reasons.append(f"Anomalous request body length (Z-score: {z_req:.2f})")
-                    score += min(0.1 * z_req, 0.5)
-            elif req_len > baseline['req_mean'] * 2 and req_len > 100:
-                reasons.append(f"Request body significantly larger than constant baseline")
-                score += 0.3
+        # 2. Topology-Aware Machine Learning (Isolation Forest)
+        if self.ml_model is not None:
+            features = extract_features(event)
+            # IsolationForest predict returns -1 for anomaly, 1 for normal
+            # score_samples returns negative anomaly score (lower is more anomalous)
+            try:
+                X = np.array([features])
+                pred = self.ml_model.predict(X)[0]
+                anomaly_score = -self.ml_model.score_samples(X)[0] # Invert so positive = anomalous
                 
-            res_len = len(res_body)
-            if baseline['res_std'] > 0:
-                z_res = abs(res_len - baseline['res_mean']) / baseline['res_std']
-                if z_res > 3.0:
-                    reasons.append(f"Anomalous response body length (Z-score: {z_res:.2f})")
-                    score += min(0.1 * z_res, 0.5)
-            elif res_len > baseline['res_mean'] * 2 and res_len > 100:
-                reasons.append(f"Response body significantly larger than constant baseline")
-                score += 0.3
+                if pred == -1:
+                    reasons.append(f"ML Topology/Data Anomaly (Score: {anomaly_score:.2f})")
+                    score += 0.6
+            except Exception as e:
+                print(f"ML prediction error: {e}")
 
         score = min(score, 1.0)
         return {
@@ -91,10 +102,12 @@ class ModelRegistry:
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
         
+        model_b64 = base64.b64encode(model.ml_model_bytes).decode('utf-8') if model.ml_model_bytes else ""
+        
         model_data = {
             "known_endpoints": list(model.known_endpoints),
             "known_status_codes": list(model.known_status_codes),
-            "numerical_baselines": model.numerical_baselines
+            "ml_model_b64": model_b64
         }
         
         cursor.execute(
@@ -109,7 +122,6 @@ class ModelRegistry:
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
         
-        # Check if table exists first
         cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='model_registry'")
         if not cursor.fetchone():
             return None
@@ -122,12 +134,14 @@ class ModelRegistry:
             return None
             
         data = json.loads(row['model_data'])
+        ml_model_bytes = base64.b64decode(data.get('ml_model_b64', '')) if data.get('ml_model_b64') else None
+        
         return ModelVersion(
             version_id=row['id'],
             created_at=row['created_at'],
-            known_endpoints=set(data['known_endpoints']),
-            known_status_codes=set(data['known_status_codes']),
-            numerical_baselines=data['numerical_baselines']
+            known_endpoints=set(data.get('known_endpoints', [])),
+            known_status_codes=set(data.get('known_status_codes', [])),
+            ml_model_bytes=ml_model_bytes
         )
         
     def list_models(self):
@@ -144,7 +158,7 @@ class DetectorService:
     def __init__(self, db_path: str, cache=None):
         self.db_path = db_path
         self.registry = ModelRegistry(db_path)
-        self.cache = cache  # EndpointCache instance, or None if Redis is unavailable
+        self.cache = cache
         self.active_model = self.registry.load_latest_model()
         
         if not self.active_model:
@@ -155,27 +169,24 @@ class DetectorService:
         method = event.get('method')
         path = event.get('path')
 
-        # Cache lookup — skip full statistical evaluation on hit
         if self.cache is not None:
             cached = self.cache.get(method, path)
             if cached is not None:
                 return cached
 
-        # Grab a local reference for thread-safety (atomic swap)
         current_model = self.active_model
         if current_model is None:
             return {"error": "No trained model available yet."}
 
         result = current_model.predict(event)
 
-        # Store non-anomalous results in cache
         if self.cache is not None:
             self.cache.set(method, path, result)
 
         return result
 
     def train_new_model(self):
-        print("Training new anomaly detection model...")
+        print("Training new topology-aware anomaly detection model...")
         conn = sqlite3.connect(self.db_path)
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
@@ -186,61 +197,52 @@ class DetectorService:
                 print(f"Warning: api_traffic table not found. Cannot train.")
                 return
 
-            cursor.execute("SELECT method, path, status_code, length(request_body) as req_len, length(response_body) as res_len FROM api_traffic")
+            cursor.execute("SELECT * FROM api_traffic")
             rows = cursor.fetchall()
             
             known_endpoints = set()
             known_status_codes = set()
-            lens_by_endpoint = defaultdict(lambda: {'req': [], 'res': []})
+            features_list = []
             
             for row in rows:
-                method = row['method']
-                path = row['path']
-                status_code = row['status_code']
-                
-                req_len = row['req_len'] or 0
-                res_len = row['res_len'] or 0
+                row_dict = dict(row)
+                method = row_dict.get('method')
+                path = row_dict.get('path')
+                status_code = row_dict.get('status_code')
                 
                 endpoint_key = f"{method} {path}"
                 known_endpoints.add(endpoint_key)
                 if status_code is not None:
                     known_status_codes.add(status_code)
                 
-                lens_by_endpoint[endpoint_key]['req'].append(req_len)
-                lens_by_endpoint[endpoint_key]['res'].append(res_len)
+                features = extract_features(row_dict)
+                features_list.append(features)
                 
-            numerical_baselines = {}
-            for ep, lengths in lens_by_endpoint.items():
-                req_mean = statistics.mean(lengths['req']) if lengths['req'] else 0
-                req_std = statistics.stdev(lengths['req']) if len(lengths['req']) > 1 else 0
-                
-                res_mean = statistics.mean(lengths['res']) if lengths['res'] else 0
-                res_std = statistics.stdev(lengths['res']) if len(lengths['res']) > 1 else 0
-                
-                numerical_baselines[ep] = {
-                    'req_mean': req_mean,
-                    'req_std': req_std,
-                    'res_mean': res_mean,
-                    'res_std': res_std
-                }
+            ml_model = None
+            ml_model_bytes = None
+            if len(features_list) > 10:
+                X = np.array(features_list)
+                # contamination is the expected proportion of outliers
+                iso_forest = IsolationForest(contamination=0.01, random_state=42)
+                iso_forest.fit(X)
+                ml_model = iso_forest
+                ml_model_bytes = pickle.dumps(iso_forest)
+            else:
+                print("Not enough data to train IsolationForest (requires > 10 events). Model will use categorical rules only.")
                 
             new_model = ModelVersion(
                 version_id=str(uuid.uuid4())[:8],
                 created_at=datetime.datetime.utcnow().isoformat(),
                 known_endpoints=known_endpoints,
                 known_status_codes=known_status_codes,
-                numerical_baselines=numerical_baselines
+                ml_model_bytes=ml_model_bytes,
+                ml_model=ml_model
             )
             
-            # Save to registry
             self.registry.save_model(new_model)
-
-            # Atomic swap — in-flight requests using the old model finish safely;
-            # the next request will pick up new_model.
             self.active_model = new_model
             print(f"✓ New model '{new_model.version_id}' activated seamlessly. Tracking {len(known_endpoints)} endpoints.")
 
-            # Flush stale cache entries so the new model's predictions take effect immediately
             if self.cache is not None:
                 self.cache.flush_model_cache()
             

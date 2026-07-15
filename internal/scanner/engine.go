@@ -205,7 +205,7 @@ func (e *Engine) executeProbes(ctx context.Context, probes []*model.Probe) []*mo
 						n, total, probe.Method, probe.Path, result.Error)
 				}
 
-				if finding := Analyze(result, e.baseline); finding != nil {
+				if finding := Analyze(ctx, result, e.baseline, e.graphClient); finding != nil {
 					resultCh <- finding
 				}
 			}
@@ -255,7 +255,7 @@ func (e *Engine) executeAuthBypassProbes(ctx context.Context, probes []*model.Pr
 					}
 				}
 
-				if finding := Analyze(result, e.baseline); finding != nil {
+				if finding := Analyze(ctx, result, e.baseline, e.graphClient); finding != nil {
 					resultCh <- finding
 				}
 			}
