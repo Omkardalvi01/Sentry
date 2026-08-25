@@ -1,10 +1,11 @@
 # Binaries
-sentry
+/sentry
 *.exe
 *.exe~
 *.dll
 *.so
 *.dylib
+*.txt
 
 # Build output
 /bin/

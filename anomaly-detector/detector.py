@@ -8,7 +8,7 @@ import numpy as np
 from sklearn.ensemble import IsolationForest
 
 def extract_features(event: dict) -> list:
-    """Extracts numerical and graph topology features for the Isolation Forest model."""
+    """Extracts numerical, temporal, and graph topology features for the Isolation Forest model."""
     req_len = len(event.get('request_body') or "")
     res_len = len(event.get('response_body') or "")
     
@@ -20,7 +20,21 @@ def extract_features(event: dict) -> list:
     # status code
     status = float(event.get('status_code') or 200)
 
-    return [req_len, res_len, is_deprecated, has_auth, dep_count, status]
+    # Temporal feature (hour of day as a continuous float 0.0 - 23.99)
+    time_feature = 0.0
+    raw_time = event.get('timestamp')
+    if raw_time:
+        try:
+            if isinstance(raw_time, str):
+                # Handle 'Z' for UTC if present
+                dt = datetime.datetime.fromisoformat(raw_time.replace('Z', '+00:00'))
+            else:
+                dt = raw_time # assuming it might already be a datetime object
+            time_feature = dt.hour + (dt.minute / 60.0)
+        except Exception:
+            pass
+
+    return [req_len, res_len, is_deprecated, has_auth, dep_count, status, time_feature]
 
 class ModelVersion:
     """Immutable trained model state for anomaly prediction."""
