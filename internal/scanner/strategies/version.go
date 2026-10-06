@@ -9,7 +9,6 @@ import (
 
 	"github.com/Omkardalvi01/sentry/internal/graph"
 	"github.com/Omkardalvi01/sentry/internal/model"
-
 )
 
 // versionRegex matches version patterns like /v1/, /v2/, /api/v1/, etc.
@@ -26,78 +25,9 @@ func (v *VersionProbe) GenerateProbes(ctx context.Context, client *graph.Client,
 	if err != nil {
 		return nil, err
 	}
-
-	// Deduplicate: we probe version variants per path, not per operation
-	seenPaths := make(map[string]bool)
-	var probes []*model.Probe
-
-	for _, op := range ops {
-		path := op.PathTemplate
-		if seenPaths[path] {
-			continue
-		}
-
-		matches := versionRegex.FindStringSubmatchIndex(path)
-		if matches == nil {
-			continue
-		}
-		seenPaths[path] = true
-
-		// Extract current version number
-		versionStr := path[matches[4]:matches[5]]
-		currentVer, err := strconv.Atoi(versionStr)
-		if err != nil {
-			continue
-		}
-
-		// Generate version variants
-		variants := generateVersionVariants(path, matches, currentVer)
-		for _, variant := range variants {
-			probe := model.MakeProbe(
-				cfg.Target,
-				variant.path,
-				op.Method,
-				model.StrategyVersionProbe,
-				map[string]string{
-					"originalPath":    path,
-					"originalVersion": fmt.Sprintf("v%d", currentVer),
-					"probedVersion":   variant.version,
-					"direction":       variant.direction,
-					"responses_schema": op.Responses,
-				},
-			)
-			probes = append(probes, probe)
-		}
-	}
-
-	// Also probe version variants in the target URL itself
-	targetVariants := generateTargetVersionVariants(cfg.Target)
-	for _, tv := range targetVariants {
-		// Re-probe known paths against the alternate target base
-		seenPathsForTarget := make(map[string]bool)
-		for _, op := range ops {
-			if seenPathsForTarget[op.PathTemplate] {
-				continue
-			}
-			seenPathsForTarget[op.PathTemplate] = true
-			// Strip the version from the path to avoid double-versioning
-			cleanPath := versionRegex.ReplaceAllString(op.PathTemplate, "/")
-			probe := model.MakeProbe(
-				tv,
-				cleanPath,
-				op.Method,
-				model.StrategyVersionProbe,
-				map[string]string{
-					"originalTarget": cfg.Target,
-					"direction":      "older",
-					"responses_schema": op.Responses,
-				},
-			)
-			probes = append(probes, probe)
-		}
-	}
-
-	return probes, nil
+	copy := *cfg
+	copy.Strategies = []string{v.Name()}
+	return Plan(ops, &copy), nil
 }
 
 type versionVariant struct {
@@ -115,7 +45,7 @@ func generateVersionVariants(path string, matches []int, currentVer int) []versi
 
 	// Older versions
 	for v := currentVer - 1; v >= 1 && v >= currentVer-2; v-- {
-		newPath := fmt.Sprintf("%sv%d/%s", prefix, v, suffix)
+		newPath := fmt.Sprintf("%sv%d%s", prefix, v, suffix)
 		variants = append(variants, versionVariant{
 			path:      newPath,
 			version:   fmt.Sprintf("v%d", v),
@@ -125,7 +55,7 @@ func generateVersionVariants(path string, matches []int, currentVer int) []versi
 
 	// Newer versions
 	for v := currentVer + 1; v <= currentVer+2; v++ {
-		newPath := fmt.Sprintf("%sv%d/%s", prefix, v, suffix)
+		newPath := fmt.Sprintf("%sv%d%s", prefix, v, suffix)
 		variants = append(variants, versionVariant{
 			path:      newPath,
 			version:   fmt.Sprintf("v%d", v),
@@ -134,7 +64,7 @@ func generateVersionVariants(path string, matches []int, currentVer int) []versi
 	}
 
 	// Unversioned (remove version prefix entirely)
-	unversioned := prefix + suffix
+	unversioned := strings.TrimRight(prefix, "/") + suffix
 	if unversioned != path {
 		variants = append(variants, versionVariant{
 			path:      unversioned,

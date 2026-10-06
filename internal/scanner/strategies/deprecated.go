@@ -6,7 +6,6 @@ import (
 
 	"github.com/Omkardalvi01/sentry/internal/graph"
 	"github.com/Omkardalvi01/sentry/internal/model"
-
 )
 
 // DeprecatedAlive generates probes for all deprecated operations.
@@ -20,24 +19,7 @@ func (d *DeprecatedAlive) GenerateProbes(ctx context.Context, client *graph.Clie
 	if err != nil {
 		return nil, err
 	}
-
-	var probes []*model.Probe
-	for _, op := range ops {
-		if !op.Deprecated {
-			continue
-		}
-		probe := model.MakeProbe(
-			cfg.Target,
-			op.PathTemplate,
-			op.Method,
-			model.StrategyDeprecatedAlive,
-			map[string]string{
-				"operationId":      op.OperationID,
-				"responses_schema": op.Responses,
-				"summary":          op.Summary,
-			},
-		)
-		probes = append(probes, probe)
-	}
-	return probes, nil
+	copy := *cfg
+	copy.Strategies = []string{d.Name()}
+	return Plan(ops, &copy), nil
 }

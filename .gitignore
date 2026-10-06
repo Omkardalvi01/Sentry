@@ -43,3 +43,15 @@ __pycache__/
 
 # Downloaded test files
 swagger.json
+# Research environments and runtime files
+.venv/
+*.db-wal
+*.db-shm
+research/results/
+research/generated/
+!anomaly-detector/requirements.txt
+!research/requirements.txt
+
+.integration-data/
+.pytest_cache/
+.local-data/

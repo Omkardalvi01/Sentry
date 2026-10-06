@@ -1,95 +1,91 @@
-from fastapi import FastAPI, BackgroundTasks
-from pydantic import BaseModel
-from typing import Dict, Any, Optional
+import datetime as dt
+import logging
 import os
 from contextlib import asynccontextmanager
+from typing import Any
+
 from apscheduler.schedulers.background import BackgroundScheduler
-
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel, Field, field_validator
 from detector import DetectorService
-from cache import EndpointCache
 
-# Config from environment
-DB_PATH = os.environ.get("SENTRY_DB_PATH", "../traffic.db")
-REDIS_URL = os.environ.get("SENTRY_REDIS_URL", "redis://localhost:6379")
-
+DB_PATH = os.environ.get('SENTRY_DB_PATH', '../traffic.db')
 detector_service = None
-scheduler = BackgroundScheduler()
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(app):
     global detector_service
-
-    # Initialize Redis cache (gracefully degrades if Redis is unavailable)
-    cache = EndpointCache(redis_url=REDIS_URL)
-
-    print(f"Initializing Detector Service with DB: {DB_PATH}")
-    detector_service = DetectorService(DB_PATH, cache=cache)
-
-    # Start APScheduler — retrains model every 24 hours and auto-flushes cache
-    print("Starting 24-hour retraining scheduler...")
-    scheduler.add_job(detector_service.train_new_model, 'interval', hours=24)
+    detector_service = DetectorService(DB_PATH)
+    scheduler = BackgroundScheduler()
+    def retrain():
+        try:
+            detector_service.train_new_model()
+        except Exception as exc:
+            logging.warning('Scheduled retraining retained previous model: %s', exc)
+    scheduler.add_job(retrain, 'interval', hours=24, max_instances=1)
     scheduler.start()
-
     yield
-
-    print("Shutting down scheduler...")
     scheduler.shutdown()
 
-app = FastAPI(title="Sentry Anomaly Detector API", lifespan=lifespan)
+app = FastAPI(title='Sentry inventory and behavioral detector', lifespan=lifespan)
 
-# Pydantic schema
 class TrafficEvent(BaseModel):
-    request_id: str
-    method: str
-    path: str
-    query_params: Optional[str] = ""
-    request_headers: Optional[Dict[str, Any]] = {}
-    request_body: Optional[str] = ""
-    status_code: int
-    response_headers: Optional[Dict[str, Any]] = {}
-    response_body: Optional[str] = ""
-    timestamp: str
+    request_id: str = Field(min_length=1)
+    method: str = Field(pattern=r"^(GET|HEAD|OPTIONS|POST|PUT|PATCH|DELETE|TRACE)$")
+    path: str = Field(pattern=r'^/')
+    timestamp: dt.datetime
+    status_code: int = Field(ge=100, le=599)
+    request_body: str | None = ''
+    response_body: str | None = ''
+    query_params: str | None = ''
+    request_headers: dict[str, Any] | None = None
+    response_headers: dict[str, Any] | None = None
+    spec_title: str = ''
+    spec_version: str = ''
+    graph_path_template: str = ''
+    graph_known: bool | None = None
+    graph_context_status: str = 'unknown'
+    graph_deprecated: bool = False
+    graph_security: str = ''
+    graph_tag: str = ''
 
-    # Graph Topology Features
-    graph_path_template: Optional[str] = ""
-    graph_deprecated: Optional[bool] = False
-    graph_security: Optional[str] = ""
-    graph_tag: Optional[str] = ""
-    graph_dependency_count: Optional[int] = 0
+    @field_validator('timestamp')
+    @classmethod
+    def timezone_required(cls, value):
+        if value.tzinfo is None:
+            raise ValueError('timestamp must include a timezone')
+        return value
 
-@app.post("/predict")
-def predict_anomaly(event: TrafficEvent):
-    """
-    Predicts if a given API traffic event is anomalous.
-    Returns cached result for known-normal endpoints (LFU + TTL eviction via Redis).
-    """
-    return detector_service.predict(event.model_dump())
+class TrainingWindow(BaseModel):
+    start: str | None = None
+    end: str | None = None
 
-@app.get("/models")
-def list_models():
-    """Lists all historically trained models from the registry."""
-    return {"models": detector_service.registry.list_models()}
+@app.post('/predict')
+def predict(event: TrafficEvent):
+    return detector_service.predict(event.model_dump(mode="json"))
 
-@app.post("/models/retrain")
-def force_retrain(background_tasks: BackgroundTasks):
-    """
-    Forces immediate retraining in the background.
-    Cache is automatically flushed after the new model is activated.
-    """
-    background_tasks.add_task(detector_service.train_new_model)
-    return {"status": "Training new model in background. Cache will be flushed on completion."}
+@app.get('/models')
+def models():
+    return {'models': detector_service.registry.list_models()}
 
-@app.get("/health")
-def health_check():
-    active = detector_service.active_model
-    cache = detector_service.cache
-    return {
-        "status": "ok",
-        "active_model_id": active.version_id if active else None,
-        "tracked_endpoints": len(active.known_endpoints) if active else 0,
-        "cache": {
-            "available": cache.is_available if cache else False,
-            "ttl_seconds": int(os.environ.get("SENTRY_CACHE_TTL", 300)),
-            "eviction_policy": "allkeys-lfu (configured on Redis server)",
-        }
-    }
+@app.post('/models/retrain')
+def retrain(window: TrainingWindow):
+    try:
+        return {'status': 'activated', 'model_version': detector_service.train_new_model(window.start, window.end)}
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+@app.post('/models/{version_id}/activate')
+def activate(version_id: str):
+    try:
+        return {'model_version': detector_service.rollback(version_id)}
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+@app.get('/health')
+def health():
+    model = detector_service.active_model
+    return {'status': 'healthy' if model else 'rules_only', 'active_model_id': model.version_id if model else None,
+            'tracked_endpoints': len(model.known_endpoints) if model else 0,
+            'last_training_error': detector_service.last_training_error,
+            'prediction_cache': 'disabled; each event is evaluated'}

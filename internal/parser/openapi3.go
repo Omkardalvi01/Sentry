@@ -57,6 +57,7 @@ func (p *OpenAPI3Parser) Parse(filePath string) (*model.Spec, error) {
 
 	// Extract paths and operations
 	spec.Paths = p.extractPaths(doc.Paths)
+	populateContext(spec, doc.Security)
 
 	return spec, nil
 }
@@ -106,6 +107,7 @@ func (p *OpenAPI3Parser) extractSecuritySchemes(schemes openapi3.SecuritySchemes
 		s := ref.Value
 		sec := model.SecurityScheme{
 			Name:             name,
+			ParameterName:    ref.Value.Name,
 			Type:             s.Type,
 			In:               s.In,
 			Scheme:           s.Scheme,
@@ -228,8 +230,8 @@ func (p *OpenAPI3Parser) extractOperations(pathItem *openapi3.PathItem) []model.
 		mop.Tags = op.Tags
 
 		// Parameters → JSON
-		if len(op.Parameters) > 0 {
-			if data, err := json.Marshal(p.serializeParameters(op.Parameters)); err == nil {
+		if len(op.Parameters) > 0 || len(pathItem.Parameters) > 0 {
+			if data, err := json.Marshal(p.serializeParameters(mergeParameters(pathItem.Parameters, op.Parameters))); err == nil {
 				mop.Parameters = string(data)
 			}
 		}
@@ -365,6 +367,17 @@ func (p *OpenAPI3Parser) serializeSecurityRequirements(reqs openapi3.SecurityReq
 // serializeSchema converts an openapi3.Schema to a generic map for JSON serialization.
 // It handles nested schemas (properties, items, allOf/oneOf/anyOf) recursively.
 func (p *OpenAPI3Parser) serializeSchema(schema *openapi3.Schema) map[string]interface{} {
+	return p.serializeSchemaSeen(schema, map[*openapi3.Schema]bool{})
+}
+
+func (p *OpenAPI3Parser) serializeSchemaSeen(schema *openapi3.Schema, seen map[*openapi3.Schema]bool) map[string]interface{} {
+	if schema != nil && seen[schema] {
+		return map[string]interface{}{"x-sentry-unsupported": "recursive reference"}
+	}
+	if schema != nil {
+		seen[schema] = true
+		defer delete(seen, schema)
+	}
 	if schema == nil {
 		return nil
 	}
@@ -386,7 +399,11 @@ func (p *OpenAPI3Parser) serializeSchema(schema *openapi3.Schema) map[string]int
 		result["description"] = schema.Description
 	}
 	if schema.Nullable {
-		result["nullable"] = true
+		if typ, ok := result["type"].(string); ok {
+			result["type"] = []string{typ, "null"}
+		} else if types, ok := result["type"].([]string); ok {
+			result["type"] = append(types, "null")
+		}
 	}
 	if len(schema.Enum) > 0 {
 		result["enum"] = schema.Enum
@@ -416,12 +433,26 @@ func (p *OpenAPI3Parser) serializeSchema(schema *openapi3.Schema) map[string]int
 		result["required"] = schema.Required
 	}
 
+	if schema.AdditionalProperties.Has != nil {
+		result["additionalProperties"] = *schema.AdditionalProperties.Has
+	} else if schema.AdditionalProperties.Schema != nil && schema.AdditionalProperties.Schema.Value != nil {
+		result["additionalProperties"] = p.serializeSchemaSeen(schema.AdditionalProperties.Schema.Value, seen)
+	}
+	if schema.MinItems > 0 {
+		result["minItems"] = schema.MinItems
+	}
+	if schema.MaxItems != nil {
+		result["maxItems"] = *schema.MaxItems
+	}
+	if schema.UniqueItems {
+		result["uniqueItems"] = true
+	}
 	// Properties (object type)
 	if len(schema.Properties) > 0 {
 		props := make(map[string]interface{})
 		for name, propRef := range schema.Properties {
 			if propRef != nil && propRef.Value != nil {
-				props[name] = p.serializeSchema(propRef.Value)
+				props[name] = p.serializeSchemaSeen(propRef.Value, seen)
 			}
 		}
 		result["properties"] = props
@@ -429,7 +460,7 @@ func (p *OpenAPI3Parser) serializeSchema(schema *openapi3.Schema) map[string]int
 
 	// Items (array type)
 	if schema.Items != nil && schema.Items.Value != nil {
-		result["items"] = p.serializeSchema(schema.Items.Value)
+		result["items"] = p.serializeSchemaSeen(schema.Items.Value, seen)
 	}
 
 	// Composition
@@ -437,7 +468,7 @@ func (p *OpenAPI3Parser) serializeSchema(schema *openapi3.Schema) map[string]int
 		allOf := make([]interface{}, 0, len(schema.AllOf))
 		for _, ref := range schema.AllOf {
 			if ref != nil && ref.Value != nil {
-				allOf = append(allOf, p.serializeSchema(ref.Value))
+				allOf = append(allOf, p.serializeSchemaSeen(ref.Value, seen))
 			}
 		}
 		result["allOf"] = allOf
@@ -446,7 +477,7 @@ func (p *OpenAPI3Parser) serializeSchema(schema *openapi3.Schema) map[string]int
 		oneOf := make([]interface{}, 0, len(schema.OneOf))
 		for _, ref := range schema.OneOf {
 			if ref != nil && ref.Value != nil {
-				oneOf = append(oneOf, p.serializeSchema(ref.Value))
+				oneOf = append(oneOf, p.serializeSchemaSeen(ref.Value, seen))
 			}
 		}
 		result["oneOf"] = oneOf
@@ -455,11 +486,73 @@ func (p *OpenAPI3Parser) serializeSchema(schema *openapi3.Schema) map[string]int
 		anyOf := make([]interface{}, 0, len(schema.AnyOf))
 		for _, ref := range schema.AnyOf {
 			if ref != nil && ref.Value != nil {
-				anyOf = append(anyOf, p.serializeSchema(ref.Value))
+				anyOf = append(anyOf, p.serializeSchemaSeen(ref.Value, seen))
 			}
 		}
 		result["anyOf"] = anyOf
 	}
 
 	return result
+}
+
+// Operation parameters override inherited parameters with the same name and location.
+func mergeParameters(common, local openapi3.Parameters) openapi3.Parameters {
+	result := append(openapi3.Parameters{}, common...)
+	for _, ref := range local {
+		if ref == nil || ref.Value == nil {
+			continue
+		}
+		replaced := false
+		for i, inherited := range result {
+			if inherited != nil && inherited.Value != nil && inherited.Value.Name == ref.Value.Name && inherited.Value.In == ref.Value.In {
+				result[i] = ref
+				replaced = true
+				break
+			}
+		}
+		if !replaced {
+			result = append(result, ref)
+		}
+	}
+	return result
+}
+
+func populateContext(spec *model.Spec, security openapi3.SecurityRequirements) {
+	for i := range spec.Paths {
+		for j := range spec.Paths[i].Operations {
+			op := &spec.Paths[i].Operations[j]
+			op.SpecTitle, op.SpecVersion, op.PathTemplate = spec.Title, spec.Version, spec.Paths[i].Template
+			if op.Security == "" {
+				data, _ := json.Marshal((&OpenAPI3Parser{}).serializeSecurityRequirements(security))
+				op.Security = string(data)
+			}
+			for _, scheme := range spec.Security {
+				var reqs []map[string]any
+				_ = json.Unmarshal([]byte(op.Security), &reqs)
+				used := false
+				for _, req := range reqs {
+					if _, ok := req[scheme.Name]; ok {
+						used = true
+					}
+				}
+				if !used {
+					continue
+				}
+				switch scheme.Type {
+				case "apiKey":
+					switch scheme.In {
+					case "header":
+						op.AuthHeaders = append(op.AuthHeaders, scheme.ParameterName)
+					case "query":
+						op.AuthQuery = append(op.AuthQuery, scheme.ParameterName)
+					case "cookie":
+						op.AuthHeaders = append(op.AuthHeaders, "Cookie")
+					}
+				case "http", "oauth2", "openIdConnect":
+					op.AuthHeaders = append(op.AuthHeaders, "Authorization")
+				}
+			}
+		}
+	}
+
 }

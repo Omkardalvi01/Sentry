@@ -1,0 +1,16 @@
+flowchart TD
+    Event[Observed method + route] --> Match[Resolve scoped inventory]
+    Match --> Known{Documented?}
+    Known -->|Unknown context| Unknown[Preserve unknown; no shadow claim]
+    Known -->|Yes| Lifecycle{Deprecated?}
+    Lifecycle -->|Yes| Review[Lifecycle review]
+    Lifecycle -->|No| Behavior[Endpoint-relative behavioral checks]
+    Known -->|No| Candidate[Shadow candidate]
+    Candidate --> Probe[Active probe + three baselines]
+    Probe --> Distinct{Distinct successful content?}
+    Distinct -->|No| Suppress[No confirmed active finding]
+    Distinct -->|Yes| Schema[Matched / mismatched / unavailable / truncated]
+    Schema --> Finding[Reachability finding with independent confidence]
+    Review --> Protected{Requires auth + credentials supplied?}
+    Protected -->|Yes| Pair[Compare credential-free content]
+    Pair --> Exposure[Equivalent content: authentication exposure]

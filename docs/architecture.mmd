@@ -1,0 +1,19 @@
+flowchart LR
+    Spec[OpenAPI / Swagger] --> Parser[Go parser]
+    Parser --> Graph[(Scoped Memgraph inventory)]
+    Gateway[Gateway logs] --> Kafka[Kafka]
+    Kafka --> Consumer[Go consumer]
+    Graph --> Context[Versioned inventory context]
+    Context --> Consumer
+    Redis[(Optional Redis snapshots)] <--> Consumer
+    Consumer --> Detector[Python inventory rules + behavioral detector]
+    Detector --> Store[(SQLite traffic + predictions)]
+    Consumer --> Store
+    Store --> Candidates[Passive shadow candidates]
+    Graph --> Planner[Production probe planner]
+    Candidates --> Planner
+    Planner --> Verifier[Active response + schema + authentication verification]
+    Verifier --> Findings[(Persisted findings + scan history)]
+    Store --> Dashboard[Dashboard API]
+    Findings --> Dashboard
+    Dashboard --> Browser[Real browser interface]
