@@ -55,6 +55,16 @@ func (ing *Ingestor) Ingest(ctx context.Context, spec *model.Spec) (*IngestStats
 	stats := &IngestStats{}
 
 	err := ing.client.RunInTransaction(ctx, func(tx neo4j.ManagedTransaction) error {
+		// Disconnect a legacy unscoped snapshot before replacing scoped nodes.
+		if _, err := tx.Run(ctx, `MATCH (s:Spec {title:$title,version:$version})-[r]->() WHERE type(r) IN ['HAS_PATH','HAS_SERVER','HAS_TAG','DEFINES_SECURITY'] DELETE r`, map[string]interface{}{"title": spec.Title, "version": spec.Version}); err != nil {
+			return err
+		}
+		// Remove this inventory snapshot; findings and scans remain independently durable.
+		for _, label := range []string{"Operation", "Path", "Tag", "SecurityScheme", "Server"} {
+			if _, err := tx.Run(ctx, "MATCH (n:"+label+" {specTitle:$title,specVersion:$version}) DETACH DELETE n", map[string]interface{}{"title": spec.Title, "version": spec.Version}); err != nil {
+				return err
+			}
+		}
 		// 1. Create Spec node
 		if err := ing.mergeSpec(ctx, tx, spec, stats); err != nil {
 			return fmt.Errorf("merging spec: %w", err)
@@ -95,19 +105,20 @@ func (ing *Ingestor) Ingest(ctx context.Context, spec *model.Spec) (*IngestStats
 
 				// 7. Wire TAGGED relationships
 				for _, tagName := range op.Tags {
-					if err := ing.wireTagged(ctx, tx, &path, &op, tagName, stats); err != nil {
+					if err := ing.wireTagged(ctx, tx, spec, &path, &op, tagName, stats); err != nil {
 						return fmt.Errorf("wiring tag %s: %w", tagName, err)
 					}
 				}
 
 				// 8. Wire REQUIRES_SECURITY relationships
-				if err := ing.wireSecurityRequirements(ctx, tx, &path, &op, stats); err != nil {
+				if err := ing.wireSecurityRequirements(ctx, tx, spec, &path, &op, stats); err != nil {
 					return fmt.Errorf("wiring security: %w", err)
 				}
 			}
 		}
 
-		return nil
+		_, err := tx.Run(ctx, `MATCH (f:Finding {specTitle:$title,specVersion:$version}) MATCH (o:Operation {specTitle:$title,specVersion:$version}) WHERE f.method=o.method AND f.path=o.path MERGE (f)-[:FOUND_ON]->(o)`, map[string]interface{}{"title": spec.Title, "version": spec.Version})
+		return err
 	})
 
 	stats.Duration = time.Since(start)
@@ -144,7 +155,7 @@ func (ing *Ingestor) mergeSpec(ctx context.Context, tx neo4j.ManagedTransaction,
 func (ing *Ingestor) mergeServer(ctx context.Context, tx neo4j.ManagedTransaction, spec *model.Spec, srv *model.Server, stats *IngestStats) error {
 	query := `
 		MATCH (s:Spec {title: $specTitle, version: $specVersion})
-		MERGE (srv:Server {url: $url})
+		MERGE (srv:Server {url: $url, specTitle: $specTitle, specVersion: $specVersion})
 		SET srv.description = $description,
 		    srv.variables = $variables
 		MERGE (s)-[:HAS_SERVER]->(srv)
@@ -169,7 +180,7 @@ func (ing *Ingestor) mergeServer(ctx context.Context, tx neo4j.ManagedTransactio
 func (ing *Ingestor) mergeTag(ctx context.Context, tx neo4j.ManagedTransaction, spec *model.Spec, tag *model.Tag, stats *IngestStats) error {
 	query := `
 		MATCH (s:Spec {title: $specTitle, version: $specVersion})
-		MERGE (t:Tag {name: $name})
+		MERGE (t:Tag {name: $name, specTitle: $specTitle, specVersion: $specVersion})
 		SET t.description = $description
 		MERGE (s)-[:HAS_TAG]->(t)
 	`
@@ -192,7 +203,7 @@ func (ing *Ingestor) mergeTag(ctx context.Context, tx neo4j.ManagedTransaction, 
 func (ing *Ingestor) mergeSecurityScheme(ctx context.Context, tx neo4j.ManagedTransaction, spec *model.Spec, sec *model.SecurityScheme, stats *IngestStats) error {
 	query := `
 		MATCH (s:Spec {title: $specTitle, version: $specVersion})
-		MERGE (sc:SecurityScheme {name: $name})
+		MERGE (sc:SecurityScheme {name: $name, specTitle: $specTitle, specVersion: $specVersion})
 		SET sc.type = $type,
 		    sc.in = $in,
 		    sc.scheme = $scheme,
@@ -225,7 +236,7 @@ func (ing *Ingestor) mergeSecurityScheme(ctx context.Context, tx neo4j.ManagedTr
 func (ing *Ingestor) mergePath(ctx context.Context, tx neo4j.ManagedTransaction, spec *model.Spec, path *model.Path, stats *IngestStats) error {
 	query := `
 		MATCH (s:Spec {title: $specTitle, version: $specVersion})
-		MERGE (p:Path {template: $template})
+		MERGE (p:Path {template: $template, specTitle: $specTitle, specVersion: $specVersion})
 		SET p.summary = $summary,
 		    p.commonParameters = $commonParameters
 		MERGE (s)-[:HAS_PATH]->(p)
@@ -250,8 +261,8 @@ func (ing *Ingestor) mergePath(ctx context.Context, tx neo4j.ManagedTransaction,
 func (ing *Ingestor) mergeOperation(ctx context.Context, tx neo4j.ManagedTransaction, spec *model.Spec, path *model.Path, op *model.Operation, stats *IngestStats) error {
 	// Use method + path template as the MERGE key to ensure uniqueness
 	query := `
-		MATCH (p:Path {template: $pathTemplate})
-		MERGE (o:Operation {method: $method, path: $pathTemplate})
+		MATCH (p:Path {template: $pathTemplate, specTitle: $specTitle, specVersion: $specVersion})
+		MERGE (o:Operation {method: $method, path: $pathTemplate, specTitle: $specTitle, specVersion: $specVersion})
 		SET o.operationId = $operationId,
 		    o.summary = $summary,
 		    o.description = $description,
@@ -259,10 +270,13 @@ func (ing *Ingestor) mergeOperation(ctx context.Context, tx neo4j.ManagedTransac
 		    o.parameters = $parameters,
 		    o.requestBody = $requestBody,
 		    o.responses = $responses,
-		    o.security = $security
+		    o.security = $security,
+		    o.tags = $tags, o.authHeaders=$authHeaders, o.authQuery=$authQuery
 		MERGE (p)-[:HAS_OPERATION]->(o)
 	`
 	params := map[string]interface{}{
+		"specTitle":    spec.Title,
+		"specVersion":  spec.Version,
 		"pathTemplate": path.Template,
 		"method":       op.Method,
 		"operationId":  op.OperationID,
@@ -273,6 +287,7 @@ func (ing *Ingestor) mergeOperation(ctx context.Context, tx neo4j.ManagedTransac
 		"requestBody":  op.RequestBody,
 		"responses":    op.Responses,
 		"security":     op.Security,
+		"tags":         op.Tags, "authHeaders": op.AuthHeaders, "authQuery": op.AuthQuery,
 	}
 
 	if _, err := tx.Run(ctx, query, params); err != nil {
@@ -284,14 +299,16 @@ func (ing *Ingestor) mergeOperation(ctx context.Context, tx neo4j.ManagedTransac
 	return nil
 }
 
-func (ing *Ingestor) wireTagged(ctx context.Context, tx neo4j.ManagedTransaction, path *model.Path, op *model.Operation, tagName string, stats *IngestStats) error {
+func (ing *Ingestor) wireTagged(ctx context.Context, tx neo4j.ManagedTransaction, spec *model.Spec, path *model.Path, op *model.Operation, tagName string, stats *IngestStats) error {
 	query := `
-		MATCH (o:Operation {method: $method, path: $pathTemplate})
-		MERGE (t:Tag {name: $tagName})
+		MATCH (o:Operation {method: $method, path: $pathTemplate, specTitle: $specTitle, specVersion: $specVersion})
+		MERGE (t:Tag {name: $tagName, specTitle: $specTitle, specVersion: $specVersion})
 		MERGE (o)-[:TAGGED]->(t)
 	`
 	params := map[string]interface{}{
 		"method":       op.Method,
+		"specTitle":    spec.Title,
+		"specVersion":  spec.Version,
 		"pathTemplate": path.Template,
 		"tagName":      tagName,
 	}
@@ -303,7 +320,7 @@ func (ing *Ingestor) wireTagged(ctx context.Context, tx neo4j.ManagedTransaction
 	return nil
 }
 
-func (ing *Ingestor) wireSecurityRequirements(ctx context.Context, tx neo4j.ManagedTransaction, path *model.Path, op *model.Operation, stats *IngestStats) error {
+func (ing *Ingestor) wireSecurityRequirements(ctx context.Context, tx neo4j.ManagedTransaction, spec *model.Spec, path *model.Path, op *model.Operation, stats *IngestStats) error {
 	if op.Security == "" {
 		return nil
 	}
@@ -315,13 +332,15 @@ func (ing *Ingestor) wireSecurityRequirements(ctx context.Context, tx neo4j.Mana
 	}
 
 	query := `
-		MATCH (o:Operation {method: $method, path: $pathTemplate})
-		MATCH (sc:SecurityScheme)
+		MATCH (o:Operation {method: $method, path: $pathTemplate, specTitle: $specTitle, specVersion: $specVersion})
+		MATCH (sc:SecurityScheme {specTitle: $specTitle, specVersion: $specVersion})
 		WHERE sc.name IN $schemeNames
 		MERGE (o)-[:REQUIRES_SECURITY]->(sc)
 	`
 	params := map[string]interface{}{
 		"method":       op.Method,
+		"specTitle":    spec.Title,
+		"specVersion":  spec.Version,
 		"pathTemplate": path.Template,
 		"schemeNames":  schemeNames,
 	}

@@ -5,7 +5,6 @@ import (
 
 	"github.com/Omkardalvi01/sentry/internal/graph"
 	"github.com/Omkardalvi01/sentry/internal/model"
-
 )
 
 // shadowPaths defines common API paths that are frequently forgotten or exposed.
@@ -83,32 +82,11 @@ type ShadowPath struct{}
 func (s *ShadowPath) Name() string { return model.StrategyShadowPath }
 
 func (s *ShadowPath) GenerateProbes(ctx context.Context, client *graph.Client, cfg *model.ScanConfig) ([]*model.Probe, error) {
-	// Get documented paths to filter them out
-	documented, err := client.ReadPaths(ctx, cfg.SpecTitle, cfg.SpecVer)
+	ops, err := client.ReadOperationsWithPaths(ctx, cfg.SpecTitle, cfg.SpecVer)
 	if err != nil {
 		return nil, err
 	}
-	docSet := make(map[string]bool)
-	for _, p := range documented {
-		docSet[p] = true
-	}
-
-	var probes []*model.Probe
-	for _, sp := range shadowPaths {
-		// Skip if this path is already documented in the spec
-		if docSet[sp.path] {
-			continue
-		}
-		probe := model.MakeProbe(
-			cfg.Target,
-			sp.path,
-			sp.method,
-			model.StrategyShadowPath,
-			map[string]string{
-				"category": sp.category,
-			},
-		)
-		probes = append(probes, probe)
-	}
-	return probes, nil
+	copy := *cfg
+	copy.Strategies = []string{s.Name()}
+	return Plan(ops, &copy), nil
 }

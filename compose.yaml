@@ -1,0 +1,76 @@
+name: sentry-research
+services:
+  memgraph:
+    image: memgraph/memgraph:3.0.0
+    ports: ["127.0.0.1:7688:7687"]
+    volumes: ["graph-data:/var/lib/memgraph"]
+    healthcheck:
+      test: ["CMD-SHELL", "echo 'RETURN 1;' | mgconsole --host 127.0.0.1 --port 7687"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+  kafka:
+    image: redpandadata/redpanda:v24.3.18
+    command: ["redpanda", "start", "--overprovisioned", "--smp", "1", "--memory", "512M", "--reserve-memory", "0M", "--node-id", "0", "--check=false", "--kafka-addr", "internal://0.0.0.0:9092,external://0.0.0.0:19092", "--advertise-kafka-addr", "internal://kafka:9092,external://127.0.0.1:19092"]
+    ports: ["127.0.0.1:19092:19092"]
+    healthcheck:
+      test: ["CMD", "rpk", "cluster", "health"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+  redis:
+    image: redis:7.4.2-alpine
+    command: ["redis-server", "--maxmemory", "64mb", "--maxmemory-policy", "allkeys-lfu"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+  detector:
+    build: {context: ., dockerfile: anomaly-detector/Dockerfile}
+    environment: {SENTRY_DB_PATH: /data/traffic.db}
+    volumes: ["traffic-data:/data"]
+    ports: ["127.0.0.1:5001:5001"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5001/health')"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+  resource:
+    build: {context: ., dockerfile: anomaly-detector/Dockerfile}
+    command: ["python", "/app/research/testbed.py", "--app", "resource", "--port", "9001", "--host", "0.0.0.0"]
+    ports: ["127.0.0.1:9001:9001"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:9001/__health')"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+  versioned:
+    build: {context: ., dockerfile: anomaly-detector/Dockerfile}
+    command: ["python", "/app/research/testbed.py", "--app", "versioned", "--port", "9002", "--host", "0.0.0.0"]
+    ports: ["127.0.0.1:9002:9002"]
+  gateway:
+    build: {context: ., dockerfile: anomaly-detector/Dockerfile}
+    command: ["python", "/app/research/testbed.py", "--app", "gateway", "--port", "9003", "--host", "0.0.0.0"]
+    ports: ["127.0.0.1:9003:9003"]
+  dashboard:
+    build: .
+    command: ["dashboard", "--host", "0.0.0.0", "--port", "8088", "--sqlite-db", "/data/traffic.db"]
+    environment: {SENTRY_MEMGRAPH_URI: "bolt://memgraph:7687", SENTRY_DETECTOR_URL: "http://detector:5001"}
+    volumes: ["traffic-data:/data"]
+    ports: ["127.0.0.1:8088:8088"]
+    depends_on: {memgraph: {condition: service_healthy}, detector: {condition: service_healthy}}
+    healthcheck:
+      test: ["CMD", "/app/sentry", "--version"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+  consumer:
+    build: .
+    command: ["consume-traffic", "--kafka-brokers", "kafka:9092", "--sqlite-db", "/data/traffic.db"]
+    environment: {SENTRY_MEMGRAPH_URI: "bolt://memgraph:7687", SENTRY_PYTHON_API: "http://detector:5001/predict", SENTRY_REDIS_URL: "redis://redis:6379"}
+    volumes: ["traffic-data:/data"]
+    depends_on: {memgraph: {condition: service_healthy}, kafka: {condition: service_healthy}, detector: {condition: service_healthy}}
+volumes:
+  graph-data:
+  traffic-data:

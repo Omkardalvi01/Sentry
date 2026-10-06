@@ -1,302 +1,155 @@
-# Sentry — Dynamic Application Security Testing
+# Sentry
 
-A graph-driven DAST tool that ingests API specifications, builds a knowledge graph in Memgraph, actively scans live targets for zombie APIs and shadow endpoints, passively collects real-world traffic via Kafka, and uses statistical anomaly detection to surface threats.
+Sentry compares API specifications, observed traffic, and active HTTP responses to identify inventory discrepancies and suspicious behavior. It retains the original five strategies: deprecated endpoints, alternate versions, undocumented methods, shadow paths, and authentication verification.
 
----
+A reachable deprecated endpoint is a lifecycle finding. It is not automatically a critical vulnerability or proof of overdue retirement. Behavioral novelty is reported separately from inventory evidence.
 
-## Architecture Overview
+## Run locally
 
-```
-┌─────────────────┐     ┌──────────────────┐     ┌───────────────────────┐
-│  OpenAPI/Swagger │────▶│  Parser (Go)     │────▶│  Memgraph (Graph DB)  │
-│  Specification   │     │  openapi3/swagger2│     │  Attack Surface Graph │
-└─────────────────┘     └──────────────────┘     └───────────┬───────────┘
-                                                             │
-                         ┌───────────────────────────────────┘
-                         ▼
-                  ┌──────────────┐     ┌──────────────────┐
-                  │ Scan Engine  │────▶│ Findings Report  │
-                  │ (5 Strategies)│     │ (Table / JSON)   │
-                  └──────────────┘     └──────────────────┘
+Requires Go matching `go.mod`, Python 3.11, and Docker Compose for the complete pipeline.
 
-┌─────────────┐     ┌──────────────────┐     ┌────────────────────────┐
-│ API Gateway │────▶│  Kafka Consumer  │────▶│  SQLite (traffic.db)   │
-│ Traffic Logs │     │  (Go)            │     │  Historical API Traffic│
-└─────────────┘     └──────────────────┘     └───────────┬────────────┘
-                                                          │
-                         ┌────────────────────────────────┘
-                         ▼
-                  ┌──────────────────────┐     ┌──────────────────┐
-                  │  Anomaly Detector    │────▶│  POST /predict   │
-                  │  (Python + FastAPI)  ├─┐   │  Model Registry  │
-                  └──────────────────────┘ │   └──────────────────┘
-                                           ▼
-                                    ┌─────────────┐
-                                    │ Redis Cache │
-                                    │ (LFU + TTL) │
-                                    └─────────────┘
+```sh
+go build -o bin/sentry ./cmd/sentry
+uv venv --python 3.11 .venv
+uv pip install --python .venv/bin/python --require-hashes -r research/requirements.lock
 ```
 
-## Features
+The complete container environment uses Memgraph, a Kafka-compatible Redpanda broker, Redis, the Python detector, three local testbeds, the consumer, and dashboard:
 
-### 1. Spec Ingestion & Knowledge Graph
-- **OpenAPI 3.x & Swagger 2.0** parsing (Swagger auto-converts to 3.0)
-- **Memgraph integration** — builds a lean topological graph where Paths and Operations are nodes, and schema details (parameters, request bodies, responses) are stored as JSON properties
-- **Idempotent** — MERGE semantics prevent duplicates on re-import
-
-### 2. Active DAST Scanner (5 Strategies)
-| Strategy | What it does |
-|:---|:---|
-| `deprecated_alive` | Probes endpoints marked `deprecated: true` in the spec to see if they still respond |
-| `version_probe` | Tries older/newer API version prefixes (e.g. `/v1/` when spec defines `/v2/`) |
-| `method_probe` | Sends undocumented HTTP methods (e.g. `DELETE` on a `GET`-only endpoint) |
-| `shadow_path` | Probes ~46 common shadow paths (`/debug/pprof/`, `/actuator/env`, `/swagger.json`, etc.) |
-| `auth_bypass` | Re-tests zombie findings WITHOUT auth headers to detect unauthenticated access |
-
-### 3. Deep Inspection & False-Positive Suppression
-- **Baseline Differential Analysis** — probes a guaranteed non-existent path on startup to fingerprint catch-all routes, suppressing false positives from WAFs and wildcard handlers
-- **JSON Schema Validation** — validates response bodies against the OpenAPI schema using `jsonschema/v6`. Schema-matching responses are `CRITICAL`; non-matching responses are downgraded to `MEDIUM`
-- **Retirement Keyword Heuristics** — detects gracefully retired endpoints by scanning response bodies for keywords like "deprecated", "sunset", "retired"
-- **Graph-Calculated Blast Radius** — The threat classification engine now calculates the dynamic risk score using the actual downstream dependency chain traversed from the target endpoint in the graph database.
-
-### 4. Kafka Traffic Consumer
-- Consumes real-time API gateway traffic logs from a Kafka topic
-- **Live Graph-Context Resolving** — When a log packet arrives via Kafka, the Go engine now runs a high-speed, constant-time Cypher traversal against the graph before talking to Python. It resolves the exact path template, verifies if the route is marked deprecated, and extracts the expected SecurityScheme and associated Tag.
-- Stores raw request/response data in a local **SQLite** database (`traffic.db`) with batched transactions for high throughput
-- Query parameters are stored in a separate column for easy filtering
-
-### 5. Python Anomaly Detection API
-- **Statistical engine** using only Python's standard library (`statistics`, `sqlite3`) — no NumPy/Pandas/Scikit-Learn
-- **Categorical anomalies** — flags unseen `(method, path)` combinations as Shadow APIs
-- **Numerical anomalies** — Z-score analysis on request/response body lengths per endpoint
-- **Topology-Aware Machine Learning** — The Isolation Forest model now accepts live Graph Topology Features (e.g., whether the endpoint is deprecated in the graph, whether it requires authentication, and its downstream microservice dependency count).
-- **Model Registry** — every trained model is serialized to JSON and persisted in SQLite with a unique version ID
-- **Zero-downtime model swaps** — Python's GIL guarantees atomic pointer assignment; in-flight predictions finish on the old model while new requests route to the freshly trained model
-- **24-hour auto-retraining** via `APScheduler`
-- **Redis Caching Layer** — Integrates a Redis cache to store non-anomalous results. Programmatically configures `maxmemory` and `allkeys-lfu` eviction to bypass re-evaluation for hot known-normal traffic, with a 5-minute TTL staleness guard.
-
----
-
-## Quick Start
-
-### Prerequisites
-
-- **Go 1.23+**
-- **Python 3.10+**
-- **Memgraph** running on `bolt://localhost:7687`
-- **Redis** (optional, for anomaly detector caching — auto-degrades if down)
-- **Kafka** (optional, for traffic consumption)
-
-### Build the Go binary
-
-```bash
-go build -o sentry ./cmd/sentry
+```sh
+docker compose up -d --build
 ```
 
-### 1. Ingest a Spec
+The dashboard is at `http://127.0.0.1:8088`. The local testbeds are at ports 9001–9003; Memgraph is exposed at 7688 and Kafka at 19092. Existing services on port 8080 are unaffected.
 
-```bash
-# Ingest the Petstore spec
-./sentry ingest --file swagger.json --clean
+Generate and ingest a local fixture specification:
 
-# Custom Memgraph URI
-./sentry ingest --file openapi.yaml --memgraph-uri bolt://db:7687
+```sh
+mkdir -p research/generated
+curl --fail http://127.0.0.1:9001/openapi.json -o research/generated/resource.json
+docker compose run --rm -v "$PWD/research/generated:/specs:ro" dashboard ingest --file /specs/resource.json
 ```
 
-### 2. Scan a Live Target
+When scanning from the container dashboard, use `http://resource:9001` as the target. The host browser talks to the dashboard, while probes originate from the Go service.
 
-```bash
-# Full scan with table output
-./sentry scan --target https://api.example.com
+For processes running directly on the host:
 
-# Scan with auth headers and higher concurrency
-./sentry scan --target https://api.example.com \
-  --header "Authorization: Bearer token123" \
-  --workers 10 --rps 20
-
-# Dry run (see what would be probed without sending requests)
-./sentry scan --target https://api.example.com --dry-run
-
-# JSON output
-./sentry scan --target https://api.example.com --output json
-
-# Run specific strategies only
-./sentry scan --target https://api.example.com \
-  --strategies deprecated_alive,shadow_path
+```sh
+bin/sentry ingest --file research/generated/resource.json --memgraph-uri bolt://127.0.0.1:7688
+bin/sentry dashboard --port 8088 --memgraph-uri bolt://127.0.0.1:7688 --sqlite-db traffic.db
 ```
 
-### 3. Consume Traffic from Kafka
+The host dashboard and consumer must use the same SQLite file. A container database is in its named volume and is separate from a host `traffic.db`.
 
-```bash
-./sentry consume-traffic \
-  --kafka-brokers localhost:9092 \
-  --kafka-topic api-gateway-logs \
-  --sqlite-db traffic.db
+## Scanner behavior
+
+```sh
+bin/sentry scan --target http://127.0.0.1:9001 --spec-title resource --spec-version 1 \
+  --memgraph-uri bolt://127.0.0.1:7688 --header 'Authorization: Bearer fixture'
+
+bin/sentry scan-spec --file research/generated/resource.json \
+  --target http://127.0.0.1:9001 --dry-run
 ```
 
-### 4. Run the Anomaly Detector
+- Select one specification and version per scan. Identical routes in different inventories remain distinct.
+- Dry runs generate the plan without sending baseline or target requests.
+- GET, HEAD, and OPTIONS are enabled by default. `--allow-mutating` enables POST/PUT/PATCH/DELETE probes for resettable targets.
+- Three nonexistent-route baselines are collected per directory, method, and authentication context. Matching compares normalized response content and media type, never just body length.
+- Responses are read up to 1 MiB, configurable with `--max-response-bytes`. Evidence keeps a separate short snippet.
+- Schema outcomes are `matched`, `mismatched`, `unavailable`, or `truncated`. Unsupported recursive schemas remain unavailable instead of being treated as matches.
+- A protected deprecated operation is tested without credentials only when credentials were supplied. Authentication exposure requires comparable successful content.
+- Passive undocumented routes join the active shadow-path plan, with provenance retained in findings.
+- Findings expose severity, confidence, verification outcome, schema result, operation identity, and provenance independently.
 
-```bash
-cd anomaly-detector
-python3 -m venv venv && source venv/bin/activate
-pip install -r requirements.txt
-uvicorn app:app --host 127.0.0.1 --port 5001
+## Traffic and models
+
+Kafka traffic events use the fields in `internal/model/traffic.go`. Provide `spec_title` and `spec_version` when multiple inventories exist. Route templates are resolved before prediction. Ambiguous or unavailable context stays unknown.
+
+Every event is evaluated. Redis only caches inventory snapshots for 60 seconds; it never caches a normal endpoint verdict. Redis is optional and configured by the deployment, without application-wide `CONFIG SET` calls.
+
+The consumer stores traffic and prediction outcomes atomically before committing Kafka offsets. Detector outages persist `pending` records, which are retried after recovery and across consumer restarts. Invalid events are rejected durably with their Kafka source identity. Duplicate request IDs do not duplicate stored traffic.
+
+The Python detector combines endpoint-relative robust body-size checks and Isolation Forest, with separate inventory signals. Model scores are not probabilities. Time features are enabled only when training history covers at least a day.
+
+Retraining uses explicitly designated `training_eligible` baseline events, ordered chronologically. The first 80% train the model; the final 20% calibrate thresholds. At least 32 training and 16 validation events are required. Evaluated anomalies and pending predictions are excluded. Failed retraining retains the old model. Model artifacts remain local trusted files because scikit-learn persistence uses pickle.
+
+```sh
+# Explicit synthetic normal baseline, for model lifecycle demonstrations only.
+.venv/bin/python anomaly-detector/seed_db.py --db traffic.db
+SENTRY_DB_PATH="$PWD/traffic.db" .venv/bin/uvicorn app:app --app-dir anomaly-detector --port 5001
 ```
 
-**API Endpoints:**
-
-| Method | Path | Description |
-|:---|:---|:---|
-| `POST` | `/predict` | Analyze a single traffic event for anomalies |
-| `GET` | `/models` | List all historically trained model versions |
-| `POST` | `/models/retrain` | Force immediate background retraining |
-| `GET` | `/health` | Health check with active model info |
-
-**Example prediction request:**
-```bash
-curl -X POST http://127.0.0.1:5001/predict \
-  -H 'Content-Type: application/json' \
-  -d '{
-    "request_id": "abc-123",
-    "method": "DELETE",
-    "path": "/api/users",
-    "status_code": 200,
-    "timestamp": "2024-01-01T12:00:00Z"
-  }'
+```sh
+curl --fail -H 'Content-Type: application/json' -d '{}' http://127.0.0.1:5001/models/retrain
 ```
 
----
+This seeded database is clearly synthetic and must not be presented as real collected traffic.
 
-## Graph Schema
+## APIs
 
-### Nodes
+| Service | Interface | Purpose |
+|---|---|---|
+| Go | `GET /api/health`, `/api/overview`, `/api/specs` | Measured service status and inventory |
+| Go | `GET /api/scans`, `/api/scans/{id}` | Paginated durable scan history |
+| Go | `POST /api/scans`, `DELETE /api/scans/{id}` | Run or cancel real jobs |
+| Go | `GET /api/findings`, `/api/findings/{id}` | Paginated findings and detailed evidence |
+| Go | `GET /api/traffic`, `/api/anomalies` | Paginated observations (`limit`, `offset`) |
+| Python | `POST /predict` | Per-event inventory and behavioral signals |
+| Python | `GET /health`, `/models` | Detector state and model metadata |
+| Python | `POST /models/retrain` | Train from an explicit optional `start`/`end` window |
+| Python | `POST /models/{id}/activate` | Activate an existing compatible model |
 
-| Label | Description |
-|:---|:---|
-| `Spec` | Root node for an imported API specification |
-| `Server` | Base URL / server entry |
-| `Path` | URL path template (e.g. `/users/{id}`) |
-| `Operation` | HTTP operation with full schema details as JSON properties |
-| `SecurityScheme` | Authentication mechanism (apiKey, oauth2, etc.) |
-| `Tag` | Logical grouping of operations |
-| `Scan` | Metadata about a completed scan run |
-| `Finding` | A security finding discovered during scanning |
+The dashboard uses persisted records exclusively. It does not generate simulated findings or silently replace failed backend requests with a demo. Kafka connectivity is not directly measured by the dashboard; it reports stored observations rather than inventing a connected state.
 
-### Relationships
+## Research and verification
 
-```
-Spec ──HAS_SERVER──▶ Server
-Spec ──HAS_PATH──▶ Path
-Spec ──DEFINES_SECURITY──▶ SecurityScheme
-Spec ──HAS_TAG──▶ Tag
-Path ──HAS_OPERATION──▶ Operation
-Operation ──TAGGED──▶ Tag
-Operation ──REQUIRES_SECURITY──▶ SecurityScheme
-Finding ──BELONGS_TO_SCAN──▶ Scan
-Finding ──FOUND_ON──▶ Operation
+```sh
+./research/run.sh
 ```
 
-### Example Cypher Queries
+This starts resettable local HTTP testbeds, gathers real requests against those fixtures, executes the production Go scanner, and evaluates five seeds. It produces separate event and endpoint metrics, component ablations, held-out application evaluation, raw reports, confidence intervals, latency measurements, and exportable plots in `research/results/`.
 
-```cypher
--- All operations with their paths
-MATCH (s:Spec)-[:HAS_PATH]->(p:Path)-[:HAS_OPERATION]->(o:Operation)
-RETURN s.title, p.template, o.method, o.operationId;
-
--- Find deprecated operations
-MATCH (o:Operation) WHERE o.deprecated = true
-RETURN o.path, o.method, o.summary;
-
--- View scan findings
-MATCH (f:Finding)-[:BELONGS_TO_SCAN]->(s:Scan)
-RETURN f.severity, f.title, f.path, f.method, s.target
-ORDER BY f.severity;
+```sh
+go test -race ./...
+.venv/bin/python -m pytest -q tests
+./scripts/integration.sh
 ```
 
----
+The integration check starts isolated Memgraph, Kafka, and Redis, verifies the real pipeline and browser, and stops only those test containers. See [the research protocol](research/README.md), [the manuscript draft](research/paper.md), and [the implementation decisions](docs/decisions.md).
 
-## Configuration
+The local testbeds are controlled evaluation fixtures, not evidence of production generalization. The benchmark keeps failed generalization results. No downstream service topology or blast-radius claim is made.
 
-### Go CLI Flags
+## See the entire project running
 
-| Flag | Env Variable | Default | Description |
-|:---|:---|:---|:---|
-| `--memgraph-uri` | `SENTRY_MEMGRAPH_URI` | `bolt://localhost:7687` | Memgraph Bolt URI |
-| `--memgraph-user` | `SENTRY_MEMGRAPH_USER` | (empty) | Memgraph username |
-| `--memgraph-pass` | `SENTRY_MEMGRAPH_PASS` | (empty) | Memgraph password |
-| `--verbose`, `-v` | — | `false` | Enable verbose output |
-| `--target`, `-t` | — | — | Base URL of the live API to scan |
-| `--workers`, `-w` | — | `5` | Number of concurrent workers |
-| `--rps`, `-r` | — | `10` | Maximum requests per second |
-| `--dry-run` | — | `false` | Print probe plan without sending requests |
-| `--insecure`, `-k` | — | `false` | Skip TLS verification |
-| `--output`, `-o` | — | `table` | Output format (`table` or `json`) |
+The local launcher runs the Go and Python services directly and uses Docker for Memgraph, Kafka, and Redis. It keeps data under `.local-data/` on the project partition and reuses cached dependency images when available.
 
-### Python Environment Variables
-
-| Variable | Default | Description |
-|:---|:---|:---|
-| `SENTRY_DB_PATH` | `../traffic.db` | Path to the SQLite database |
-| `SENTRY_REDIS_URL` | `redis://localhost:6379` | URL to the Redis instance |
-| `SENTRY_CACHE_TTL` | `300` | TTL in seconds for cached predictions |
-| `SENTRY_REDIS_MAXMEMORY` | `64mb` | Limit for the Redis memory usage configuration |
-
----
-
-## Project Structure
-
-```
-├── cmd/sentry/main.go            — CLI entry point (ingest, scan, consume-traffic)
-├── internal/
-│   ├── config/config.go          — Configuration with env var support
-│   ├── parser/                   — OpenAPI/Swagger parsing
-│   │   ├── parser.go             — Parser interface + format auto-detection
-│   │   ├── openapi3.go           — OpenAPI 3.x implementation
-│   │   └── swagger2.go           — Swagger 2.0 → 3.0 conversion
-│   ├── model/                    — Internal representation structs
-│   │   ├── spec.go               — API spec, path, operation models
-│   │   ├── finding.go            — Finding, Scan, Probe, ScanConfig
-│   │   ├── probe_util.go         — URL building, dummy values, evidence formatting
-│   │   └── traffic.go            — TrafficEvent model for Kafka
-│   ├── graph/                    — Memgraph operations
-│   │   ├── client.go             — Connection management
-│   │   ├── schema.go             — Index creation
-│   │   ├── ingestor.go           — Model → Cypher ingestion
-│   │   └── reader.go             — Graph queries + scan/finding persistence
-│   ├── scanner/                  — DAST scanning engine
-│   │   ├── engine.go             — Orchestrator (worker pool, rate limiting, 2-phase scan)
-│   │   ├── analyzer.go           — Finding evaluation with deep inspection
-│   │   ├── schema_cache.go       — Thread-safe JSON schema validation cache
-│   │   ├── http.go               — Tuned HTTP client for probing
-│   │   ├── reporter.go           — Table and JSON report formatters
-│   │   └── strategies/           — Detection strategies
-│   │       ├── deprecated.go     — Deprecated endpoint detection
-│   │       ├── version.go        — API version variant probing
-│   │       ├── methods.go        — Undocumented HTTP method detection
-│   │       ├── shadow.go         — Shadow/undocumented path discovery
-│   │       └── authbypass.go     — Authentication bypass testing
-│   ├── consumer/kafka.go         — Kafka traffic consumer with batching
-│   └── storage/sqlite.go         — SQLite storage for API traffic
-├── anomaly-detector/             — Python anomaly detection microservice
-│   ├── app.py                    — FastAPI server with APScheduler
-│   ├── detector.py               — ModelVersion, ModelRegistry, DetectorService
-│   ├── seed_db.py                — Test data seeder
-│   └── requirements.txt          — Python dependencies
-└── testdata/                     — Sample specs for testing
+```sh
+./scripts/run-local.sh
 ```
 
----
+Open **http://127.0.0.1:8088**. Startup trains a baseline from normal requests to the local fixtures, starts continuous real HTTP traffic through Kafka, and submits an initial real scan. Fixtures are intentionally vulnerable local APIs, not production traffic.
 
-## Tech Stack
+Click **New scan**, select **resource · 1**, and enter `http://127.0.0.1:9001`. Add an `Authorization` header with value `Bearer fixture`. Preview the request plan, leave Dry run unchecked, and click Start scan. Use Endpoints, Scans, Findings, Traffic, and System health to inspect the results. The other fixtures are `versioned` on 9002 and `gateway` on 9003.
 
-| Component | Technology |
-|:---|:---|
-| Core CLI & Scanner | Go |
-| Graph Database | Memgraph (Neo4j Bolt protocol) |
-| Spec Parsing | `kin-openapi` |
-| Message Queue | Apache Kafka (`segmentio/kafka-go`) |
-| Traffic Storage | SQLite (`modernc.org/sqlite`, CGO-free) |
-| Schema Validation | `santhosh-tekuri/jsonschema/v6` |
-| Anomaly Detection | Python 3 + FastAPI |
-| Model Scheduling | APScheduler |
-| Result Caching | Redis (LFU eviction policy) |
+The detector's interactive API documentation is at **http://127.0.0.1:5001/docs**. Service logs and persistent history are in `.local-data/app/`.
+
+Stop with Ctrl+C in the launcher terminal, or from another terminal:
+
+```sh
+./scripts/run-local.sh --stop
+```
+
+
+## Investigate one endpoint
+
+Select an API and target in the header, then open **Scans** and choose a run. The request explorer filters by originating operation, actual method/path, strategy, result, HTTP status, authentication context, and baseline controls. Sorting and pagination apply to the complete dataset; exports use the same filters.
+
+Opening a request shows readable response evidence and related baseline/authenticated comparisons. Older scans retain their findings and explicitly report that request history was not recorded. The Endpoints screen can launch a scan limited to one operation and its related checks; unrelated shadow guesses are excluded.
+
+The new `/api/explorer/{endpoints,scans,findings,traffic}` endpoints return `items`, matching `total`, pagination, and a snapshot bound. `/api/scans/{id}/requests` and `/api/requests/{id}` expose sanitized request history. Existing list APIs remain available for compatibility. Passive traffic without a recorded target remains separate from target-filtered observations.
+
+Browser acceptance checks against the running local demo:
+
+```sh
+.venv/bin/python research/browser_explorer.py
+```

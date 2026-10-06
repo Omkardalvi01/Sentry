@@ -1,0 +1,26 @@
+{
+  "go": "go test -race ./... passed; live scoped Memgraph test passed",
+  "python": "10 tests passed",
+  "browser": "Chromium desktop/mobile integration passed",
+  "pipeline": {
+    "passed": true,
+    "events": 4,
+    "scan_id": "84723fe2-6129-4782-8d3c-4c502f6ac84b",
+    "findings": 9,
+    "browser_checked": true,
+    "checks": [
+      "real Kafka ingestion",
+      "per-event predictions",
+      "passive-to-active verification",
+      "authentication comparison",
+      "zero-request dry run",
+      "restart persistence",
+      "duplicate replay",
+      "detector outage",
+      "pending recovery after consumer restart"
+    ]
+  },
+  "benchmark": "five seeds, three local HTTP testbeds, 4800 collected events",
+  "compose": "configuration and pinned base-image manifests checked; full container builds not executed",
+  "external_zap": "runner provided, comparison not executed"
+}

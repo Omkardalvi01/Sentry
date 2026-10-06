@@ -5,6 +5,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"os"
 	"os/signal"
 	"strings"
@@ -15,6 +16,7 @@ import (
 
 	"github.com/Omkardalvi01/sentry/internal/config"
 	"github.com/Omkardalvi01/sentry/internal/consumer"
+	dashboardapi "github.com/Omkardalvi01/sentry/internal/dashboard"
 	"github.com/Omkardalvi01/sentry/internal/graph"
 	"github.com/Omkardalvi01/sentry/internal/model"
 	"github.com/Omkardalvi01/sentry/internal/parser"
@@ -23,7 +25,7 @@ import (
 )
 
 var (
-	version = "0.1.0"
+	version = "0.2.0"
 	cfg     = config.Default()
 )
 
@@ -51,12 +53,56 @@ for automated security testing.`,
 	rootCmd.AddCommand(ingestCmd())
 	// Scan subcommand
 	rootCmd.AddCommand(scanCmd())
+	rootCmd.AddCommand(scanSpecCmd())
+	rootCmd.AddCommand(replayCmd())
 	// Consume traffic subcommand
 	rootCmd.AddCommand(consumeTrafficCmd())
+	rootCmd.AddCommand(dashboardCmd())
 
 	if err := rootCmd.Execute(); err != nil {
 		os.Exit(1)
 	}
+}
+
+func dashboardCmd() *cobra.Command {
+	var dir, host, dbPath string
+	var port int
+	cmd := &cobra.Command{
+		Use:   "dashboard",
+		Short: "Serve the Sentry dashboard and HTTP API",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			api, err := dashboardapi.New(dashboardapi.Config{DashboardDir: dir, DBPath: dbPath, MemgraphURI: cfg.MemgraphURI, MemgraphUser: cfg.MemgraphUser, MemgraphPass: cfg.MemgraphPass})
+			if err != nil {
+				return err
+			}
+			defer api.Close(context.Background())
+			handler, err := api.Handler()
+			if err != nil {
+				return err
+			}
+			addr := fmt.Sprintf("%s:%d", host, port)
+			fmt.Printf("✓ Dashboard listening at http://%s\n", addr)
+			server := &http.Server{Addr: addr, Handler: handler, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 30 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 60 * time.Second}
+			ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+			defer stop()
+			go func() {
+				<-ctx.Done()
+				shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+				defer cancel()
+				_ = server.Shutdown(shutdownCtx)
+			}()
+			err = server.ListenAndServe()
+			if err == http.ErrServerClosed {
+				return nil
+			}
+			return err
+		},
+	}
+	cmd.Flags().StringVar(&dbPath, "sqlite-db", "traffic.db", "Shared traffic and scan database")
+	cmd.Flags().StringVar(&dir, "dashboard-dir", "dashboard", "Directory containing dashboard HTML/CSS/JS")
+	cmd.Flags().StringVar(&host, "host", "127.0.0.1", "HTTP listen host")
+	cmd.Flags().IntVarP(&port, "port", "p", 8080, "HTTP listen port")
+	return cmd
 }
 
 func ingestCmd() *cobra.Command {
@@ -184,7 +230,7 @@ Active scanning sends real HTTP requests. Only run against authorized targets.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// Parse headers
 			scanCfg.Headers = scanner.ParseHeaders(headers)
-			
+
 			// Parse strategies
 			if strategiesStr != "" {
 				scanCfg.Strategies = strings.Split(strategiesStr, ",")
@@ -192,7 +238,7 @@ Active scanning sends real HTTP requests. Only run against authorized targets.`,
 					scanCfg.Strategies[i] = strings.TrimSpace(scanCfg.Strategies[i])
 				}
 			}
-			
+
 			scanCfg.Verbose = cfg.Verbose
 
 			return runScan(scanCfg)
@@ -207,10 +253,13 @@ Active scanning sends real HTTP requests. Only run against authorized targets.`,
 	cmd.Flags().DurationVar(&scanCfg.Timeout, "timeout", 15*time.Second, "Request timeout")
 	cmd.Flags().StringSliceVarP(&headers, "header", "H", nil, "Custom header (e.g. 'Authorization: Bearer token')")
 	cmd.Flags().StringVar(&strategiesStr, "strategies", "", "Comma-separated list of strategies to run (default: all)")
+	cmd.Flags().IntVar(&scanCfg.MaxRequests, "max-requests", 0, "Total request budget including baselines (0 unlimited)")
+	cmd.Flags().BoolVar(&scanCfg.AllowMutating, "allow-mutating", false, "Enable POST/PUT/PATCH/DELETE probes against resettable authorized targets")
+	cmd.Flags().Int64Var(&scanCfg.MaxResponseBytes, "max-response-bytes", 1<<20, "Maximum response bytes used for validation")
 	cmd.Flags().BoolVar(&scanCfg.DryRun, "dry-run", false, "Print probe plan without sending requests")
 	cmd.Flags().BoolVarP(&scanCfg.Insecure, "insecure", "k", false, "Skip TLS verification")
 	cmd.Flags().StringVarP(&scanCfg.Output, "output", "o", "table", "Output format (table or json)")
-	
+
 	_ = cmd.MarkFlagRequired("target")
 
 	return cmd
@@ -233,8 +282,32 @@ func runScan(scanCfg *model.ScanConfig) error {
 	fmt.Println("✓ Connected to Memgraph")
 
 	engine := scanner.NewEngine(scanCfg, client)
-	
+
+	store, err := storage.NewTrafficStore("traffic.db")
+	if err != nil {
+		return err
+	}
+	defer store.Close()
+	candidates, err := store.PassiveCandidates(ctx, scanCfg.SpecTitle, scanCfg.SpecVer)
+	if err != nil {
+		return err
+	}
+	scanCfg.PassiveCandidates = candidates
+	scanCfg.RecordRequest = func(record *model.RequestRecord) error { return store.SaveRequest(context.Background(), record) }
+	scanCfg.RecordProgress = func(scan *model.Scan) error { return store.SaveScan(context.Background(), scan, nil) }
 	scan, findings, err := engine.Run(ctx)
+	if scan != nil {
+		if err != nil {
+			scan.Status = "failed"
+			scan.Error = err.Error()
+			if ctx.Err() != nil {
+				scan.Status = "cancelled"
+			}
+		}
+		if persistErr := store.SaveScan(context.Background(), scan, findings); persistErr != nil {
+			return persistErr
+		}
+	}
 	if err != nil {
 		return fmt.Errorf("running scan: %w", err)
 	}

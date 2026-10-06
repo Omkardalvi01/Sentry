@@ -2,161 +2,259 @@ package scanner
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"net/url"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
-	"golang.org/x/time/rate"
-	"github.com/google/uuid"
-
 	"github.com/Omkardalvi01/sentry/internal/graph"
 	"github.com/Omkardalvi01/sentry/internal/model"
 	"github.com/Omkardalvi01/sentry/internal/scanner/strategies"
+	"github.com/google/uuid"
+	"golang.org/x/time/rate"
 )
 
-// Strategy defines the interface that all detection strategies implement.
 type Strategy interface {
 	Name() string
-	GenerateProbes(ctx context.Context, client *graph.Client, cfg *model.ScanConfig) ([]*model.Probe, error)
+	GenerateProbes(context.Context, *graph.Client, *model.ScanConfig) ([]*model.Probe, error)
 }
-
-// Engine orchestrates the scanning process.
 type Engine struct {
-	cfg         *model.ScanConfig
-	graphClient *graph.Client
-	httpClient  *HTTPClient
-	noAuthHTTP  *HTTPClient
-	limiter     *rate.Limiter
-	baseline    *model.ProbeResult
+	traceMu                sync.Mutex
+	traceErr               error
+	scanID                 string
+	scanStarted            time.Time
+	phase                  string
+	planned                atomic.Int64
+	completed              atomic.Int64
+	controls               atomic.Int64
+	findingsCount          atomic.Int64
+	lastProgress           time.Time
+	requestErrors          atomic.Int64
+	budgetExhausted        atomic.Bool
+	cfg                    *model.ScanConfig
+	graphClient            *graph.Client
+	httpClient, noAuthHTTP *HTTPClient
+	limiter                *rate.Limiter
+	sent                   atomic.Int64
+	baselines              map[string][]*model.ProbeResult
 }
 
-// NewEngine creates a new scan engine.
-func NewEngine(cfg *model.ScanConfig, graphClient *graph.Client) *Engine {
-	return &Engine{
-		cfg:         cfg,
-		graphClient: graphClient,
-		httpClient:  NewHTTPClient(cfg),
-		noAuthHTTP:  NewHTTPClientWithoutAuth(cfg),
-		limiter:     rate.NewLimiter(rate.Limit(cfg.RPS), cfg.RPS),
+func NewEngine(cfg *model.ScanConfig, g *graph.Client) *Engine {
+	return &Engine{cfg: cfg, graphClient: g, httpClient: NewHTTPClient(cfg), noAuthHTTP: NewHTTPClientWithoutAuth(cfg), limiter: rate.NewLimiter(rate.Limit(max(cfg.RPS, 1)), 1), baselines: map[string][]*model.ProbeResult{}}
+}
+func ValidateConfig(cfg *model.ScanConfig) error {
+	u, err := url.Parse(cfg.Target)
+	if err != nil || u.Host == "" || (u.Scheme != "http" && u.Scheme != "https") || u.User != nil || u.RawQuery != "" || u.Fragment != "" {
+		return fmt.Errorf("target must be an HTTP(S) base URL without credentials, query, or fragment")
 	}
+	if cfg.Workers < 1 || cfg.Workers > 64 || cfg.RPS < 1 || cfg.RPS > 1000 {
+		return fmt.Errorf("workers must be 1–64 and rps 1–1000")
+	}
+	if cfg.MaxRequests < 0 {
+		return fmt.Errorf("max requests must be nonnegative")
+	}
+	if cfg.Timeout <= 0 {
+		return fmt.Errorf("timeout must be positive")
+	}
+	for _, wanted := range cfg.Strategies {
+		found := false
+		for _, name := range model.AllStrategies {
+			if wanted == name {
+				found = true
+			}
+		}
+		if !found {
+			return fmt.Errorf("unknown strategy %q", wanted)
+		}
+	}
+	return nil
 }
-
-// Run executes the full scan pipeline.
 func (e *Engine) Run(ctx context.Context) (*model.Scan, []*model.Finding, error) {
-	scan := &model.Scan{
-		ID:        uuid.New().String(),
-		Target:    e.cfg.Target,
-		SpecTitle: e.cfg.SpecTitle,
-		SpecVersion: e.cfg.SpecVer,
-		StartedAt: time.Now().UTC(),
-		Status:    "running",
+	scan := &model.Scan{ID: e.cfg.ID, Target: e.cfg.Target, SpecTitle: e.cfg.SpecTitle, SpecVersion: e.cfg.SpecVer, StartedAt: time.Now().UTC(), Status: "running", Strategies: e.cfg.Strategies, TraceVersion: e.traceVersion(), SelectedOperations: e.cfg.SelectedOperations}
+	if scan.ID == "" {
+		scan.ID = uuid.NewString()
 	}
-
-	// Resolve which strategies to run
-	activeStrategies := e.resolveStrategies()
-
-	fmt.Printf("⏳ Generating probes from %d strategies...\n", len(activeStrategies))
-
-	// Determine baseline for differential analysis
-	e.determineBaseline(ctx)
-
-	// Phase 1: Generate probes from all strategies (except auth_bypass)
-	var allProbes []*model.Probe
-	for _, strat := range activeStrategies {
-		if strat.Name() == model.StrategyAuthBypass {
-			continue // auth bypass runs as Phase 2
-		}
-
-		probes, err := strat.GenerateProbes(ctx, e.graphClient, e.cfg)
-		if err != nil {
-			fmt.Printf("  ⚠ %s: %v\n", strat.Name(), err)
-			continue
-		}
-		fmt.Printf("  ✓ %s: %d probes\n", strat.Name(), len(probes))
-		allProbes = append(allProbes, probes...)
+	if err := ValidateConfig(e.cfg); err != nil {
+		return scan, nil, err
 	}
+	if len(scan.Strategies) == 0 {
+		scan.Strategies = append([]string{}, model.AllStrategies...)
+	}
+	if e.graphClient == nil {
+		return scan, nil, fmt.Errorf("inventory graph is required")
+	}
+	ops, err := e.graphClient.ReadOperationsWithPaths(ctx, e.cfg.SpecTitle, e.cfg.SpecVer)
+	if err != nil {
+		return scan, nil, err
+	}
+	e.cfg.ID = scan.ID
+	return e.RunWithOperations(ctx, ops)
+}
 
+func (e *Engine) RunWithOperations(ctx context.Context, ops []graph.OperationWithPath) (*model.Scan, []*model.Finding, error) {
+	scan := &model.Scan{ID: e.cfg.ID, Target: e.cfg.Target, SpecTitle: e.cfg.SpecTitle, SpecVersion: e.cfg.SpecVer, StartedAt: time.Now().UTC(), Status: "running", Strategies: e.cfg.Strategies, TraceVersion: e.traceVersion(), SelectedOperations: e.cfg.SelectedOperations}
+	if scan.ID == "" {
+		scan.ID = uuid.NewString()
+	}
+	if err := ValidateConfig(e.cfg); err != nil {
+		return scan, nil, err
+	}
+	if len(scan.Strategies) == 0 {
+		scan.Strategies = append([]string{}, model.AllStrategies...)
+	}
+	scopes := map[string]bool{}
+	for _, op := range ops {
+		scopes[model.OperationKey(op.SpecTitle, op.SpecVersion, "", "")] = true
+	}
+	if len(scopes) != 1 {
+		return scan, nil, fmt.Errorf("select exactly one spec and version; matched %d inventories", len(scopes))
+	}
+	scan.SpecTitle, scan.SpecVersion = ops[0].SpecTitle, ops[0].SpecVersion
+	e.cfg.SpecTitle, e.cfg.SpecVer = scan.SpecTitle, scan.SpecVersion
+	e.scanID = scan.ID
+	e.scanStarted = scan.StartedAt
+	e.phase = "planning"
+	if err := ValidateSelection(ops, e.cfg); err != nil {
+		return scan, nil, err
+	}
+	probes := strategies.Plan(ops, e.cfg)
+	e.planned.Store(int64(len(probes)))
+	conditional := map[string]*model.Probe{}
+	for _, p := range probes {
+		e.record(e.requestRecord(p, false))
+		if e.active(model.StrategyAuthBypass) && p.Strategy == model.StrategyDeprecatedAlive && p.Meta["requires_auth"] == "true" && e.hasCredentials(p) {
+			b := *p
+			b.ID = uuid.NewString()
+			b.Strategy = model.StrategyAuthBypass
+			b.Meta = copyMeta(p.Meta)
+			b.Meta["compared_request_id"] = p.ID
+			conditional[p.ID] = &b
+			r := e.requestRecord(&b, true)
+			r.Conditional = true
+			r.Reason = "Runs if the authenticated check produces eligible evidence"
+			e.record(r)
+			e.planned.Add(1)
+		}
+	}
+	e.progress(true)
+	if e.cfg.DisableSchema {
+		for _, p := range probes {
+			delete(p.Meta, "responses_schema")
+		}
+	}
 	if e.cfg.DryRun {
-		e.printDryRun(allProbes)
+		for _, p := range probes {
+			fmt.Printf("%s %s [%s]\n", p.Method, model.SafeProbeURL(p), p.Strategy)
+		}
 		scan.Status = "dry_run"
+		scan.PlannedChecks = int(e.planned.Load())
+		scan.Phase = "planned"
 		scan.CompletedAt = time.Now().UTC()
 		return scan, nil, nil
 	}
-
-	fmt.Printf("\n⏳ Executing %d probes (%d workers, %d RPS)...\n", len(allProbes), e.cfg.Workers, e.cfg.RPS)
-
-	// Phase 1: Execute probes
-	phase1Findings := e.executeProbes(ctx, allProbes)
-	fmt.Printf("✓ Phase 1 complete: %d findings\n", len(phase1Findings))
-
-	// Phase 2: Auth bypass (second pass using Phase 1 findings)
-	var phase2Findings []*model.Finding
-	if e.isStrategyActive(model.StrategyAuthBypass) && len(phase1Findings) > 0 {
-		fmt.Printf("\n⏳ Phase 2: Auth bypass testing on %d zombie findings...\n", len(phase1Findings))
-		authBypass := &strategies.AuthBypass{}
-		bypassProbes := authBypass.GenerateProbesFromFindings(phase1Findings, e.cfg)
-		if len(bypassProbes) > 0 {
-			phase2Findings = e.executeAuthBypassProbes(ctx, bypassProbes)
-			fmt.Printf("✓ Phase 2 complete: %d findings\n", len(phase2Findings))
+	e.setPhase("baseline")
+	e.prepareBaselines(ctx, probes, false)
+	e.setPhase("checks")
+	findings, results := e.execute(ctx, probes, false)
+	if e.active(model.StrategyAuthBypass) {
+		bypass := []*model.Probe{}
+		for _, r := range results {
+			if r.Probe.Strategy != model.StrategyDeprecatedAlive || r.Probe.Meta["requires_auth"] != "true" || !e.hasCredentials(r.Probe) {
+				continue
+			}
+			if Analyze(ctx, r, e.baseline(r, false), nil) == nil {
+				continue
+			}
+			original := r.Probe
+			p := *original
+			if scheduled := conditional[original.ID]; scheduled != nil {
+				p.ID = scheduled.ID
+				delete(conditional, original.ID)
+			} else {
+				p.ID = uuid.NewString()
+			}
+			p.Strategy = model.StrategyAuthBypass
+			p.Headers = map[string]string{}
+			for k, v := range original.Headers {
+				p.Headers[k] = v
+			}
+			p.Meta = map[string]string{}
+			for k, v := range original.Meta {
+				p.Meta[k] = v
+			}
+			p.Meta["authenticated"] = "true"
+			p.Meta["compared_request_id"] = original.ID
+			b, _ := json.Marshal(r)
+			p.Meta["authenticated_response"] = string(b)
+			e.stripCredentials(&p)
+			bypass = append(bypass, &p)
 		}
+		e.setPhase("authentication")
+		e.prepareBaselines(ctx, bypass, true)
+		additional, _ := e.execute(ctx, bypass, true)
+		findings = append(findings, additional...)
 	}
-
-	// Combine all findings
-	allFindings := append(phase1Findings, phase2Findings...)
-
-	// Update scan metadata
+	for _, p := range conditional {
+		r := e.requestRecord(p, true)
+		r.Conditional = true
+		r.Outcome = "skipped"
+		r.Reason = "Authenticated response did not meet verification prerequisites"
+		e.record(r)
+		e.completed.Add(1)
+	}
+	sortedFindings(findings)
 	scan.CompletedAt = time.Now().UTC()
-	scan.FindingsCount = len(allFindings)
-	scan.ProbesSent = len(allProbes)
+	scan.ProbesSent = int(e.sent.Load())
+	scan.PlannedChecks = int(e.planned.Load())
+	scan.CompletedChecks = int(e.completed.Load())
+	scan.BaselineRequests = int(e.controls.Load())
+	scan.Phase = "finished"
+	scan.RequestErrors = int(e.requestErrors.Load())
+	scan.FindingsCount = len(findings)
 	scan.Status = "completed"
-	scan.Strategies = e.cfg.Strategies
-
-	// Persist to graph
-	if err := e.persistResults(ctx, scan, allFindings); err != nil {
-		fmt.Printf("  ⚠ Failed to persist results to Memgraph: %v\n", err)
+	if scan.RequestErrors > 0 {
+		scan.Status = "partial"
+		scan.Error = "Some requests failed; detection coverage is incomplete"
 	}
-
-	return scan, allFindings, nil
+	if e.budgetExhausted.Load() {
+		scan.Status = "budget_exhausted"
+		scan.Error = "Request budget exhausted; scan coverage is incomplete"
+	}
+	if ctx.Err() != nil {
+		scan.Status = "cancelled"
+		scan.Error = ctx.Err().Error()
+	}
+	for _, f := range findings {
+		f.ScanID = scan.ID
+	}
+	if e.traceErr != nil {
+		scan.Status = "failed"
+		scan.Error = "Request history could not be persisted: " + e.traceErr.Error()
+		return scan, findings, e.traceErr
+	}
+	if e.graphClient == nil {
+		return scan, findings, ctx.Err()
+	}
+	persistCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := e.graphClient.WriteScan(persistCtx, scan); err != nil {
+		scan.Status = "failed"
+		scan.Error = err.Error()
+		return scan, findings, err
+	}
+	for _, f := range findings {
+		if err := e.graphClient.WriteFinding(persistCtx, f, scan.ID); err != nil {
+			scan.Status = "failed"
+			scan.Error = err.Error()
+			return scan, findings, err
+		}
+	}
+	return scan, findings, ctx.Err()
 }
-
-func (e *Engine) resolveStrategies() []Strategy {
-	wanted := make(map[string]bool)
-	if len(e.cfg.Strategies) == 0 {
-		// All strategies
-		for _, s := range model.AllStrategies {
-			wanted[s] = true
-		}
-	} else {
-		for _, s := range e.cfg.Strategies {
-			wanted[s] = true
-		}
-	}
-
-	var active []Strategy
-	registry := []Strategy{
-		&strategies.DeprecatedAlive{},
-		&strategies.VersionProbe{},
-		&strategies.MethodProbe{},
-		&strategies.ShadowPath{},
-		// AuthBypass is handled separately in Phase 2
-	}
-
-	for _, strat := range registry {
-		if wanted[strat.Name()] {
-			active = append(active, strat)
-		}
-	}
-
-	// Add a placeholder for auth bypass tracking
-	if wanted[model.StrategyAuthBypass] {
-		active = append(active, &authBypassPlaceholder{})
-	}
-
-	return active
-}
-
-func (e *Engine) isStrategyActive(name string) bool {
+func (e *Engine) active(name string) bool {
 	if len(e.cfg.Strategies) == 0 {
 		return true
 	}
@@ -167,179 +265,211 @@ func (e *Engine) isStrategyActive(name string) bool {
 	}
 	return false
 }
-
-func (e *Engine) executeProbes(ctx context.Context, probes []*model.Probe) []*model.Finding {
-	probeCh := make(chan *model.Probe, len(probes))
-	resultCh := make(chan *model.Finding, len(probes))
-
-	// Feed probes
-	for _, p := range probes {
-		probeCh <- p
-	}
-	close(probeCh)
-
-	// Progress tracking
-	var completed int64
-	total := int64(len(probes))
-
-	// Worker pool
-	var wg sync.WaitGroup
-	for i := 0; i < e.cfg.Workers; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for probe := range probeCh {
-				// Rate limit
-				if err := e.limiter.Wait(ctx); err != nil {
-					return
-				}
-
-				result := e.httpClient.SendProbe(ctx, probe)
-				n := atomic.AddInt64(&completed, 1)
-
-				if e.cfg.Verbose && result.Error == nil {
-					fmt.Printf("  [%d/%d] %s %s → %d (%s)\n",
-						n, total, probe.Method, probe.Path, result.StatusCode, result.Duration.Round(time.Millisecond))
-				} else if e.cfg.Verbose && result.Error != nil {
-					fmt.Printf("  [%d/%d] %s %s → ERR: %v\n",
-						n, total, probe.Method, probe.Path, result.Error)
-				}
-
-				if finding := Analyze(ctx, result, e.baseline, e.graphClient); finding != nil {
-					resultCh <- finding
-				}
-			}
-		}()
-	}
-
-	// Wait for all workers then close results
-	go func() {
-		wg.Wait()
-		close(resultCh)
-	}()
-
-	// Collect findings
-	var findings []*model.Finding
-	for f := range resultCh {
-		findings = append(findings, f)
-	}
-	return findings
+func baselineKey(p *model.Probe, noAuth bool) string {
+	u, _ := url.Parse(p.URL)
+	return fmt.Sprintf("%s://%s%s|%s|%t", u.Scheme, u.Host, u.Path[:strings.LastIndex(u.Path, "/")+1], p.Method, noAuth)
 }
-
-func (e *Engine) executeAuthBypassProbes(ctx context.Context, probes []*model.Probe) []*model.Finding {
-	probeCh := make(chan *model.Probe, len(probes))
-	resultCh := make(chan *model.Finding, len(probes))
-
+func (e *Engine) prepareBaselines(ctx context.Context, probes []*model.Probe, noAuth bool) {
 	for _, p := range probes {
-		probeCh <- p
-	}
-	close(probeCh)
-
-	var wg sync.WaitGroup
-	for i := 0; i < e.cfg.Workers; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for probe := range probeCh {
-				if err := e.limiter.Wait(ctx); err != nil {
-					return
-				}
-				// Use the no-auth HTTP client
-				result := e.noAuthHTTP.SendProbe(ctx, probe)
-
-				if e.cfg.Verbose {
-					if result.Error == nil {
-						fmt.Printf("  [auth-bypass] %s %s → %d\n", probe.Method, probe.Path, result.StatusCode)
-					} else {
-						fmt.Printf("  [auth-bypass] %s %s → ERR: %v\n", probe.Method, probe.Path, result.Error)
+		key := baselineKey(p, noAuth)
+		if _, ok := e.baselines[key]; ok {
+			continue
+		}
+		e.baselines[key] = nil
+		u, _ := url.Parse(p.URL)
+		prefix := u.Path[:strings.LastIndex(u.Path, "/")+1]
+		for i := 0; i < 3; i++ {
+			b := *p
+			b.ID = uuid.NewString()
+			b.Origins = nil
+			for _, related := range probes {
+				if baselineKey(related, noAuth) == key {
+					for _, origin := range related.Origins {
+						found := false
+						for _, prev := range b.Origins {
+							if prev.Key == origin.Key {
+								found = true
+							}
+						}
+						if !found {
+							b.Origins = append(b.Origins, origin)
+						}
 					}
 				}
-
-				if finding := Analyze(ctx, result, e.baseline, e.graphClient); finding != nil {
-					resultCh <- finding
-				}
 			}
-		}()
+			b.Strategy = "baseline"
+			v := *u
+			v.Path = prefix + "sentry-not-found-" + uuid.NewString()
+			v.RawQuery = ""
+			b.URL = v.String()
+			b.Path = v.Path
+			e.record(e.requestRecord(&b, noAuth))
+			r := e.send(ctx, &b, noAuth)
+			rec := e.requestRecord(&b, noAuth)
+			e.finishRecord(rec, r)
+			rec.Reason = "Nonexistent-route control for response comparison"
+			e.record(rec)
+			e.progress(false)
+			e.baselines[key] = append(e.baselines[key], r)
+		}
 	}
-
-	go func() {
-		wg.Wait()
-		close(resultCh)
-	}()
-
-	var findings []*model.Finding
-	for f := range resultCh {
-		findings = append(findings, f)
-	}
-	return findings
 }
-
-func (e *Engine) persistResults(ctx context.Context, scan *model.Scan, findings []*model.Finding) error {
-	if err := e.graphClient.WriteScan(ctx, scan); err != nil {
-		return fmt.Errorf("writing scan: %w", err)
+func (e *Engine) baseline(r *model.ProbeResult, noAuth bool) *model.ProbeResult {
+	if e.cfg.DisableCatchAll {
+		return nil
 	}
-
-	for _, f := range findings {
-		if err := e.graphClient.WriteFinding(ctx, f, scan.ID); err != nil {
-			return fmt.Errorf("writing finding %s: %w", f.ID, err)
+	for _, b := range e.baselines[baselineKey(r.Probe, noAuth)] {
+		if isCatchAll(r, b) {
+			return b
 		}
 	}
 	return nil
 }
-
-func (e *Engine) printDryRun(probes []*model.Probe) {
-	fmt.Printf("\n🔍 Dry Run — %d probes would be sent:\n\n", len(probes))
-
-	// Group by strategy
-	byStrategy := make(map[string][]*model.Probe)
+func (e *Engine) send(ctx context.Context, p *model.Probe, noAuth bool) *model.ProbeResult {
+	e.traceMu.Lock()
+	failed := e.traceErr != nil
+	e.traceMu.Unlock()
+	if failed {
+		return &model.ProbeResult{Probe: p, Error: fmt.Errorf("request history unavailable")}
+	}
+	if err := e.limiter.Wait(ctx); err != nil {
+		return &model.ProbeResult{Probe: p, Error: err}
+	}
+	for {
+		n := e.sent.Load()
+		if e.cfg.MaxRequests > 0 && n >= int64(e.cfg.MaxRequests) {
+			e.budgetExhausted.Store(true)
+			return &model.ProbeResult{Probe: p, Error: fmt.Errorf("request budget exhausted")}
+		}
+		if e.sent.CompareAndSwap(n, n+1) {
+			break
+		}
+	}
+	client := e.httpClient
+	if noAuth {
+		client = e.noAuthHTTP
+	}
+	r := client.SendProbe(ctx, p)
+	r.Sent = true
+	if p.Strategy == "baseline" {
+		e.controls.Add(1)
+	}
+	if r.Error != nil {
+		e.requestErrors.Add(1)
+	}
+	return r
+}
+func (e *Engine) execute(ctx context.Context, probes []*model.Probe, noAuth bool) ([]*model.Finding, []*model.ProbeResult) {
+	jobs := make(chan *model.Probe)
+	var wg sync.WaitGroup
+	var mu sync.Mutex
+	findings := []*model.Finding{}
+	results := []*model.ProbeResult{}
+	for i := 0; i < e.cfg.Workers; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for p := range jobs {
+				r := e.send(ctx, p, noAuth)
+				baseline := e.baseline(r, noAuth)
+				f := Analyze(ctx, r, baseline, nil)
+				rec := e.requestRecord(p, noAuth)
+				e.finishRecord(rec, r)
+				for _, b := range e.baselines[baselineKey(p, noAuth)] {
+					rec.BaselineIDs = append(rec.BaselineIDs, b.Probe.ID)
+				}
+				if f != nil {
+					evidenceResult := *r
+					evidenceResult.Body = model.RedactBody(r.Body, e.secrets(p))
+					f.Evidence = model.FormatEvidence(&evidenceResult)
+					f.RequestID = p.ID
+					f.Origins = p.Origins
+					rec.Outcome = "finding"
+					rec.Reason = f.Description
+					rec.SchemaResult = f.SchemaResult
+					rec.FindingIDs = []string{f.ID}
+					e.findingsCount.Add(1)
+				} else if r.Error == nil {
+					rec.Outcome, rec.Reason = ExplainOutcome(r, baseline)
+					rec.SchemaResult, _ = InspectSchema(p.Meta["responses_schema"], r.StatusCode, contentType(r), r.Body, r.Truncated)
+				}
+				e.record(rec)
+				e.completed.Add(1)
+				e.progress(false)
+				mu.Lock()
+				results = append(results, r)
+				if f != nil {
+					findings = append(findings, f)
+				}
+				mu.Unlock()
+			}
+		}()
+	}
+feed:
 	for _, p := range probes {
-		byStrategy[p.Strategy] = append(byStrategy[p.Strategy], p)
+		select {
+		case jobs <- p:
+		case <-ctx.Done():
+			break feed
+		}
 	}
-
-	for strategy, stratProbes := range byStrategy {
-		fmt.Printf("  [%s] (%d probes)\n", strategy, len(stratProbes))
-		limit := 10
-		if len(stratProbes) < limit {
-			limit = len(stratProbes)
+	close(jobs)
+	wg.Wait()
+	for _, p := range probes {
+		seen := false
+		for _, r := range results {
+			if r.Probe.ID == p.ID {
+				seen = true
+				break
+			}
 		}
-		for _, p := range stratProbes[:limit] {
-			fmt.Printf("    %s %s\n", p.Method, p.URL)
+		if !seen {
+			rec := e.requestRecord(p, noAuth)
+			rec.Outcome = "skipped"
+			rec.Reason = "Scan cancelled before this check started"
+			e.record(rec)
+			e.completed.Add(1)
 		}
-		if len(stratProbes) > limit {
-			fmt.Printf("    ... and %d more\n", len(stratProbes)-limit)
-		}
-		fmt.Println()
 	}
+	return findings, results
 }
-
-// authBypassPlaceholder implements Strategy for registration purposes.
-// The actual probe generation happens in Phase 2 via GenerateProbesFromFindings.
-type authBypassPlaceholder struct{}
-
-func (a *authBypassPlaceholder) Name() string { return model.StrategyAuthBypass }
-func (a *authBypassPlaceholder) GenerateProbes(_ context.Context, _ *graph.Client, _ *model.ScanConfig) ([]*model.Probe, error) {
-	return nil, nil
+func (e *Engine) hasCredentials(p *model.Probe) bool {
+	names := append([]string{"Authorization", "X-API-Key", "X-Auth-Token", "Cookie"}, strings.Split(p.Meta["auth_headers"], ",")...)
+	for _, name := range names {
+		for k, v := range e.cfg.Headers {
+			if strings.EqualFold(k, name) && v != "" {
+				return true
+			}
+		}
+		for k, v := range p.Headers {
+			if strings.EqualFold(k, name) && v != "" {
+				return true
+			}
+		}
+	}
+	u, _ := url.Parse(p.URL)
+	for _, name := range strings.Split(p.Meta["auth_query"], ",") {
+		if name != "" && u.Query().Get(name) != "" {
+			return true
+		}
+	}
+	return false
 }
-
-// determineBaseline sends a request to a guaranteed non-existent path to see how the server responds
-func (e *Engine) determineBaseline(ctx context.Context) {
-	fmt.Println("⏳ Determining baseline response for non-existent paths...")
-	dummyPath := "/sentry-baseline-not-found-" + uuid.New().String()
-	probe := &model.Probe{
-		URL:      e.cfg.Target + dummyPath,
-		Path:     dummyPath,
-		Method:   "GET",
-		Strategy: "baseline",
-		Headers:  e.cfg.Headers,
+func (e *Engine) stripCredentials(p *model.Probe) {
+	for _, k := range []string{"Authorization", "X-API-Key", "X-Auth-Token", "Cookie"} {
+		p.Headers[k] = ""
 	}
-	
-	// Bypass limiter for the single baseline check
-	result := e.httpClient.SendProbe(ctx, probe)
-	e.baseline = result
-
-	if result.Error == nil {
-		fmt.Printf("  ✓ Baseline determined: Status %d, Length %d bytes\n", result.StatusCode, len(result.Body))
-	} else {
-		fmt.Printf("  ⚠ Baseline determination failed: %v\n", result.Error)
+	// Names of custom API keys come from the inventory. Populated by scan configuration when needed.
+	for _, k := range strings.Split(p.Meta["auth_headers"], ",") {
+		if k != "" {
+			p.Headers[k] = ""
+		}
 	}
+	u, _ := url.Parse(p.URL)
+	q := u.Query()
+	for _, k := range strings.Split(p.Meta["auth_query"], ",") {
+		q.Del(k)
+	}
+	u.RawQuery = q.Encode()
+	p.URL = u.String()
 }

@@ -56,7 +56,7 @@ func PrintTableReport(scan *model.Scan, findings []*model.Finding) {
 	fmt.Println()
 
 	if len(sorted) == 0 {
-		fmt.Println("  ✅ No zombie APIs or vulnerabilities found.")
+		fmt.Println("  ✅ No findings surfaced by the selected probes.")
 		fmt.Println()
 		return
 	}
@@ -103,7 +103,7 @@ func PrintJSONReport(scan *model.Scan, findings []*model.Finding) {
 		"scan":     scan,
 		"findings": findings,
 		"summary": map[string]interface{}{
-			"total":    len(findings),
+			"total":      len(findings),
 			"bySeverity": countBySeverity(findings),
 			"byStrategy": countByStrategy(findings),
 		},

@@ -1,0 +1,19 @@
+name: sentry-integration
+services:
+  memgraph:
+    image: memgraph/memgraph:3.0.0
+    user: "${SENTRY_TEST_UID:-1000}:${SENTRY_TEST_GID:-1000}"
+    command: ["--log-file=/var/log/memgraph/integration.log", "--telemetry-enabled=false"]
+    volumes: ["./.integration-data/memgraph-data:/var/lib/memgraph", "./.integration-data/memgraph-logs:/var/log/memgraph"]
+    logging: {driver: none}
+    ports: ["127.0.0.1:7689:7687"]
+  kafka:
+    image: redpandadata/redpanda:v24.3.18
+    volumes: ["./.integration-data/kafka-data:/var/lib/redpanda/data"]
+    logging: {driver: none}
+    command: ["redpanda", "start", "--overprovisioned", "--smp", "1", "--memory", "512M", "--reserve-memory", "0M", "--node-id", "0", "--check=false", "--kafka-addr", "0.0.0.0:9092", "--advertise-kafka-addr", "127.0.0.1:19093"]
+    ports: ["127.0.0.1:19093:9092"]
+  redis:
+    image: redis:7.4.2-alpine
+    logging: {driver: none}
+    ports: ["127.0.0.1:6389:6379"]

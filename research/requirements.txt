@@ -1,0 +1,5 @@
+-r ../anomaly-detector/requirements.txt
+pytest==8.3.5
+httpx==0.28.1
+matplotlib==3.10.3
+playwright==1.52.0

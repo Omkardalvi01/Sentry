@@ -74,6 +74,7 @@ func (p *Swagger2Parser) Parse(filePath string) (*model.Spec, error) {
 	}
 
 	spec.Paths = oa3.extractPaths(doc3.Paths)
+	populateContext(spec, doc3.Security)
 
 	return spec, nil
 }

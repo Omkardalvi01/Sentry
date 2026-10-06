@@ -1,0 +1,9 @@
+.git
+.venv
+bin
+sentry
+*.db*
+research/results
+research/generated
+__pycache__
+.pytest_cache

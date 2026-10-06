@@ -2,6 +2,7 @@ package model
 
 import (
 	"fmt"
+	"net/url"
 	"regexp"
 	"strings"
 	"time"
@@ -28,14 +29,14 @@ func BuildURL(target, pathTemplate string) string {
 func dummyValue(paramName string) string {
 	lower := strings.ToLower(paramName)
 	switch {
+	case strings.Contains(lower, "uuid"):
+		return "00000000-0000-0000-0000-000000000000"
 	case strings.Contains(lower, "id"):
 		return "1"
 	case strings.Contains(lower, "name"):
 		return "test"
 	case strings.Contains(lower, "slug"):
 		return "test-slug"
-	case strings.Contains(lower, "uuid"):
-		return "00000000-0000-0000-0000-000000000000"
 	case strings.Contains(lower, "email"):
 		return "test@example.com"
 	case strings.Contains(lower, "date"):
@@ -86,4 +87,21 @@ func FormatEvidence(result *ProbeResult) string {
 		bodySnippet,
 		result.Duration.Round(time.Millisecond),
 	)
+}
+
+// SafeProbeURL omits credential query values from reports and dry-run logs.
+func SafeProbeURL(p *Probe) string {
+	u, err := url.Parse(p.URL)
+	if err != nil {
+		return "invalid URL"
+	}
+	q := u.Query()
+	names := append([]string{"api_key", "apikey", "access_token", "token"}, strings.Split(p.Meta["auth_query"], ",")...)
+	for _, name := range names {
+		if name != "" && q.Has(name) {
+			q.Set(name, "[redacted]")
+		}
+	}
+	u.RawQuery = q.Encode()
+	return u.String()
 }

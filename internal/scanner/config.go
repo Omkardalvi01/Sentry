@@ -4,8 +4,6 @@ import (
 	"strings"
 )
 
-
-
 // ParseHeaders parses a slice of "Key: Value" strings into a map.
 func ParseHeaders(headers []string) map[string]string {
 	m := make(map[string]string)

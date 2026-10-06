@@ -15,24 +15,30 @@ import (
 
 // HTTPClient is a tuned HTTP client for sending scan probes.
 type HTTPClient struct {
-	client  *http.Client
-	headers map[string]string
+	client   *http.Client
+	headers  map[string]string
+	maxBytes int64
 }
 
 // NewHTTPClient creates an HTTP client with a tuned transport for scanning.
 func NewHTTPClient(cfg *model.ScanConfig) *HTTPClient {
 	transport := &http.Transport{
-		MaxIdleConns:        100,
-		MaxIdleConnsPerHost: 20,
-		IdleConnTimeout:     30 * time.Second,
-		TLSHandshakeTimeout: 10 * time.Second,
+		MaxIdleConns:          100,
+		MaxIdleConnsPerHost:   20,
+		IdleConnTimeout:       30 * time.Second,
+		TLSHandshakeTimeout:   10 * time.Second,
 		ResponseHeaderTimeout: cfg.Timeout,
 		TLSClientConfig: &tls.Config{
 			InsecureSkipVerify: cfg.Insecure,
 		},
 	}
 
+	limit := cfg.MaxResponseBytes
+	if limit <= 0 {
+		limit = 1 << 20
+	}
 	return &HTTPClient{
+		maxBytes: limit,
 		client: &http.Client{
 			Transport: transport,
 			Timeout:   cfg.Timeout,
@@ -81,6 +87,7 @@ func (hc *HTTPClient) SendProbe(ctx context.Context, probe *model.Probe) *model.
 
 	// Send
 	start := time.Now()
+	defer func() { result.Duration = time.Since(start) }()
 	resp, err := hc.client.Do(req)
 	result.Duration = time.Since(start)
 
@@ -93,8 +100,13 @@ func (hc *HTTPClient) SendProbe(ctx context.Context, probe *model.Probe) *model.
 	result.StatusCode = resp.StatusCode
 	result.Headers = resp.Header
 
-	// Read limited body (first 512 bytes for evidence)
-	body, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
+	// Keep a bounded validation body; evidence is separately shortened.
+	body, readErr := io.ReadAll(io.LimitReader(resp.Body, hc.maxBytes+1))
+	result.Error = readErr
+	if int64(len(body)) > hc.maxBytes {
+		result.Truncated = true
+		body = body[:hc.maxBytes]
+	}
 	result.Body = string(body)
 
 	return result

@@ -22,7 +22,7 @@ func (c *Client) ReadOperations(ctx context.Context, specTitle, specVersion stri
 		RETURN o.method AS method, o.operationId AS operationId, o.path AS path,
 		       o.summary AS summary, o.description AS description, o.deprecated AS deprecated,
 		       o.parameters AS parameters, o.requestBody AS requestBody,
-		       o.responses AS responses, o.security AS security
+		       o.responses AS responses, o.security AS security, s.title AS specTitle, s.version AS specVersion, o.authHeaders AS authHeaders, o.authQuery AS authQuery, o.tags AS tags
 	`
 
 	result, err := session.Run(ctx, query, map[string]interface{}{
@@ -37,7 +37,11 @@ func (c *Client) ReadOperations(ctx context.Context, specTitle, specVersion stri
 	for result.Next(ctx) {
 		record := result.Record()
 		op := model.Operation{
-			Method:      stringVal(record, "method"),
+			SpecTitle:    stringVal(record, "specTitle"),
+			SpecVersion:  stringVal(record, "specVersion"),
+			PathTemplate: stringVal(record, "path"),
+			Method:       stringVal(record, "method"),
+			AuthHeaders:  stringsVal(record, "authHeaders"), AuthQuery: stringsVal(record, "authQuery"), Tags: stringsVal(record, "tags"),
 			OperationID: stringVal(record, "operationId"),
 			Summary:     stringVal(record, "summary"),
 			Description: stringVal(record, "description"),
@@ -46,10 +50,6 @@ func (c *Client) ReadOperations(ctx context.Context, specTitle, specVersion stri
 			RequestBody: stringVal(record, "requestBody"),
 			Responses:   stringVal(record, "responses"),
 			Security:    stringVal(record, "security"),
-		}
-		// The path is stored on the Operation node as "path" property
-		if p := stringVal(record, "path"); p != "" {
-			op.Tags = []string{p} // Re-purpose: first tag = path template
 		}
 		ops = append(ops, op)
 	}
@@ -77,7 +77,7 @@ func (c *Client) ReadOperationsWithPaths(ctx context.Context, specTitle, specVer
 		RETURN o.method AS method, o.operationId AS operationId, o.path AS path,
 		       o.summary AS summary, o.description AS description, o.deprecated AS deprecated,
 		       o.parameters AS parameters, o.requestBody AS requestBody,
-		       o.responses AS responses, o.security AS security,
+		       o.responses AS responses, o.security AS security, s.title AS specTitle, s.version AS specVersion, o.authHeaders AS authHeaders, o.authQuery AS authQuery, o.tags AS tags,
 		       p.template AS pathTemplate
 	`
 
@@ -94,7 +94,11 @@ func (c *Client) ReadOperationsWithPaths(ctx context.Context, specTitle, specVer
 		record := result.Record()
 		owp := OperationWithPath{
 			Operation: model.Operation{
-				Method:      stringVal(record, "method"),
+				SpecTitle:    stringVal(record, "specTitle"),
+				SpecVersion:  stringVal(record, "specVersion"),
+				PathTemplate: stringVal(record, "path"),
+				Method:       stringVal(record, "method"),
+				AuthHeaders:  stringsVal(record, "authHeaders"), AuthQuery: stringsVal(record, "authQuery"), Tags: stringsVal(record, "tags"),
 				OperationID: stringVal(record, "operationId"),
 				Summary:     stringVal(record, "summary"),
 				Description: stringVal(record, "description"),
@@ -180,17 +184,19 @@ func (c *Client) ReadPaths(ctx context.Context, specTitle, specVersion string) (
 }
 
 // ReadMethodsForPath returns the HTTP methods defined for a given path template.
-func (c *Client) ReadMethodsForPath(ctx context.Context, pathTemplate string) ([]string, error) {
+func (c *Client) ReadMethodsForPath(ctx context.Context, pathTemplate, specTitle, specVersion string) ([]string, error) {
 	session := c.Session(ctx)
 	defer session.Close(ctx)
 
 	query := `
-		MATCH (p:Path {template: $template})-[:HAS_OPERATION]->(o:Operation)
+		MATCH (s:Spec)-[:HAS_PATH]->(p:Path {template: $template})-[:HAS_OPERATION]->(o:Operation)
+		WHERE ($specTitle="" OR s.title=$specTitle) AND ($specVersion="" OR s.version=$specVersion)
 		RETURN o.method AS method
 	`
 
 	result, err := session.Run(ctx, query, map[string]interface{}{
-		"template": pathTemplate,
+		"template":  pathTemplate,
+		"specTitle": specTitle, "specVersion": specVersion,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("querying methods for path: %w", err)
@@ -247,15 +253,17 @@ func (c *Client) WriteFinding(ctx context.Context, finding *model.Finding, scanI
 		    f.statusCode = $statusCode,
 		    f.evidence = $evidence,
 		    f.remediation = $remediation,
-		    f.timestamp = $timestamp
+		    f.timestamp = $timestamp, f.confidence=$confidence, f.verification=$verification, f.schemaResult=$schemaResult, f.provenance=$provenance, f.specTitle=$specTitle, f.specVersion=$specVersion
 		MERGE (f)-[:BELONGS_TO_SCAN]->(scan)
 		WITH f
-		OPTIONAL MATCH (o:Operation {method: $method, path: $path})
+		OPTIONAL MATCH (o:Operation {method: $method, path: $path, specTitle:$specTitle, specVersion:$specVersion})
 		FOREACH (_ IN CASE WHEN o IS NOT NULL THEN [1] ELSE [] END |
 		    MERGE (f)-[:FOUND_ON]->(o)
 		)
 	`, map[string]interface{}{
-		"scanId":      scanID,
+		"confidence": finding.Confidence, "verification": finding.Verification, "schemaResult": finding.SchemaResult, "provenance": finding.Provenance,
+		"scanId":    scanID,
+		"specTitle": finding.SpecTitle, "specVersion": finding.SpecVersion,
 		"id":          finding.ID,
 		"strategy":    finding.Strategy,
 		"severity":    finding.Severity,
@@ -296,60 +304,43 @@ func boolVal(record *neo4j.Record, key string) bool {
 	return b
 }
 
-// GraphContext holds the topology features extracted from the graph.
+// GraphContext holds inventory features. No service-call topology is inferred.
 type GraphContext struct {
-	PathTemplate    string
-	Deprecated      bool
-	Security        string
-	Tag             string
-	DependencyCount int
+	PathTemplate string
+	Deprecated   bool
+	Security     string
+	Tag          string
+	SpecTitle    string
+	SpecVersion  string
 }
 
-// ResolveTrafficContext performs a constant-time Cypher traversal to extract features.
-func (c *Client) ResolveTrafficContext(ctx context.Context, method, pathTemplate string) (GraphContext, error) {
-	session := c.Session(ctx)
-	defer session.Close(ctx)
-
-	// Fetch properties and traverse [:CALLS*] to find downstream dependency count
-	query := `
-		MATCH (p:Path {template: $template})-[:HAS_OPERATION]->(o:Operation {method: $method})
-		OPTIONAL MATCH (o)-[:CALLS*]->(dep)
-		RETURN p.template AS template,
-		       o.deprecated AS deprecated,
-		       o.security AS security,
-		       o.tags AS tags,
-		       count(distinct dep) AS depCount
-	`
-
-	result, err := session.Run(ctx, query, map[string]interface{}{
-		"template": pathTemplate,
-		"method":   method,
-	})
+func (c *Client) ResolveTrafficContext(ctx context.Context, method, pathTemplate, specTitle, specVersion string) (GraphContext, error) {
+	ops, err := c.ReadOperationsWithPaths(ctx, specTitle, specVersion)
 	if err != nil {
-		return GraphContext{}, fmt.Errorf("running resolve query: %w", err)
+		return GraphContext{}, err
 	}
-
-	if result.Next(ctx) {
-		record := result.Record()
-		gc := GraphContext{
-			PathTemplate:    stringVal(record, "template"),
-			Deprecated:      boolVal(record, "deprecated"),
-			Security:        stringVal(record, "security"),
-			DependencyCount: int(record.Values[4].(int64)),
+	var matched []OperationWithPath
+	for _, op := range ops {
+		if op.PathTemplate == pathTemplate && op.Method == method {
+			matched = append(matched, op)
 		}
-		
-		// Tags is stored as JSON string or string array? In ingestor, tags might be string array.
-		// For now we try to safely extract it. 
-		if val, ok := record.Get("tags"); ok && val != nil {
-			if tags, isArray := val.([]interface{}); isArray && len(tags) > 0 {
-				gc.Tag = fmt.Sprintf("%v", tags[0])
-			} else if tagsStr, isStr := val.(string); isStr {
-				gc.Tag = tagsStr
+	}
+	if len(matched) != 1 {
+		return GraphContext{}, fmt.Errorf("expected one scoped operation, found %d", len(matched))
+	}
+	op := matched[0]
+	return GraphContext{PathTemplate: op.PathTemplate, Deprecated: op.Deprecated, Security: op.Security, SpecTitle: op.SpecTitle, SpecVersion: op.SpecVersion}, nil
+}
+
+func stringsVal(record *neo4j.Record, key string) []string {
+	v, _ := record.Get(key)
+	out := []string{}
+	if vals, ok := v.([]interface{}); ok {
+		for _, val := range vals {
+			if s, ok := val.(string); ok {
+				out = append(out, s)
 			}
 		}
-
-		return gc, nil
 	}
-
-	return GraphContext{}, fmt.Errorf("not found in graph")
+	return out
 }

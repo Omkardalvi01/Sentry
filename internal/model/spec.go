@@ -41,20 +41,26 @@ type Path struct {
 // This is the primary scanning unit. Schema details are stored as JSON properties
 // to keep the graph lean while preserving full spec detail for payload generation.
 type Operation struct {
-	Method      string
-	OperationID string
-	Summary     string
-	Description string
-	Deprecated  bool
-	Parameters  string // JSON — full parameter array
-	RequestBody string // JSON — full request body object
-	Responses   string // JSON — map of status code → response
-	Security    string // JSON — security requirements
-	Tags        []string
+	AuthHeaders  []string
+	AuthQuery    []string
+	SpecTitle    string
+	SpecVersion  string
+	PathTemplate string
+	Method       string
+	OperationID  string
+	Summary      string
+	Description  string
+	Deprecated   bool
+	Parameters   string // JSON — full parameter array
+	RequestBody  string // JSON — full request body object
+	Responses    string // JSON — map of status code → response
+	Security     string // JSON — security requirements
+	Tags         []string
 }
 
 // SecurityScheme represents an authentication/authorization mechanism.
 type SecurityScheme struct {
+	ParameterName    string
 	Name             string
 	Type             string // apiKey, http, oauth2, openIdConnect
 	In               string // header, query, cookie (for apiKey)

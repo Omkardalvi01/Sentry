@@ -3,6 +3,7 @@ package graph
 
 import (
 	"context"
+	"crypto/sha256"
 	"fmt"
 
 	"github.com/neo4j/neo4j-go-driver/v5/neo4j"
@@ -58,11 +59,12 @@ func (c *Client) Run(ctx context.Context, cypher string, params map[string]inter
 	session := c.Session(ctx)
 	defer session.Close(ctx)
 
-	_, err := session.Run(ctx, cypher, params)
+	result, err := session.Run(ctx, cypher, params)
 	if err != nil {
 		return fmt.Errorf("executing cypher: %w", err)
 	}
-	return nil
+	_, err = result.Consume(ctx)
+	return err
 }
 
 // RunInTransaction executes a function within a write transaction with automatic retry.
@@ -74,4 +76,8 @@ func (c *Client) RunInTransaction(ctx context.Context, fn func(tx neo4j.ManagedT
 		return nil, fn(tx)
 	})
 	return err
+}
+
+func (c *Client) InventoryCacheKey() string {
+	return fmt.Sprintf("sentry:inventory:%x", sha256.Sum256([]byte(c.uri)))
 }

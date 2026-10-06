@@ -3,124 +3,91 @@ package scanner
 import (
 	"encoding/json"
 	"fmt"
+	"mime"
+	"strconv"
 	"strings"
 	"sync"
 
-	"github.com/google/uuid"
 	"github.com/santhosh-tekuri/jsonschema/v6"
 )
 
-var (
-	// schemaCache stores compiled jsonschema.Schema pointers
-	// Key: <responses_schema_json>|<status_code>
-	schemaCache sync.Map
-	// compiler is thread-safe after creation
-	compiler = jsonschema.NewCompiler()
+const (
+	SchemaMatched     = "matched"
+	SchemaMismatched  = "mismatched"
+	SchemaUnavailable = "unavailable"
+	SchemaTruncated   = "truncated"
 )
 
-// ValidateSchema checks if the response body matches the expected schema.
-// It returns (matched, error). If the schema doesn't exist for the status code,
-// it returns (true, nil) because we only want to fail validation if a schema exists and doesn't match.
-func ValidateSchema(responsesJSON string, statusCode int, contentType, body string) (bool, error) {
+var schemaCache sync.Map
+
+// InspectSchema separates lack of evidence from actual agreement. Each compiler
+// is local to a cache miss; compiled schemas can safely be shared by workers.
+func InspectSchema(responsesJSON string, status int, contentType, body string, truncated bool) (string, error) {
+	if truncated {
+		return SchemaTruncated, nil
+	}
 	if responsesJSON == "" {
-		return true, nil // No schema to validate against
+		return SchemaUnavailable, nil
 	}
-	
-	// Fast path: check cache
-	cacheKey := fmt.Sprintf("%s|%d|%s", responsesJSON, statusCode, contentType)
-	if cached, ok := schemaCache.Load(cacheKey); ok {
-		if cached == nil {
-			return true, nil // cached as "no schema needed"
-		}
-		schema := cached.(*jsonschema.Schema)
-		var v interface{}
-		if err := json.Unmarshal([]byte(body), &v); err != nil {
-			return false, fmt.Errorf("invalid json body: %w", err)
-		}
-		if err := schema.Validate(v); err != nil {
-			return false, err
-		}
-		return true, nil
+	var responses map[string]struct {
+		Content map[string]struct {
+			Schema any `json:"schema"`
+		} `json:"content"`
 	}
-
-	// Slow path: parse responsesJSON and compile schema
-	var responses map[string]interface{}
 	if err := json.Unmarshal([]byte(responsesJSON), &responses); err != nil {
-		return false, fmt.Errorf("invalid responses json: %w", err)
+		return SchemaUnavailable, err
 	}
-
-	// Try specific status code, then "default", then return true (no schema)
-	statusStr := fmt.Sprintf("%d", statusCode)
-	respNode, ok := responses[statusStr]
+	node, ok := responses[strconv.Itoa(status)]
 	if !ok {
-		respNode, ok = responses["default"]
-		if !ok {
-			schemaCache.Store(cacheKey, nil)
-			return true, nil
+		node, ok = responses[fmt.Sprintf("%dXX", status/100)]
+	}
+	if !ok {
+		node, ok = responses["default"]
+	}
+	if !ok {
+		return SchemaUnavailable, nil
+	}
+	media, _, _ := mime.ParseMediaType(contentType)
+	selected, ok := node.Content[media]
+	if !ok && strings.HasSuffix(media, "+json") {
+		selected, ok = node.Content["application/json"]
+	}
+	if !ok || selected.Schema == nil {
+		return SchemaUnavailable, nil
+	}
+	if media != "application/json" && !strings.HasSuffix(media, "+json") {
+		return SchemaUnavailable, nil
+	}
+	raw, _ := json.Marshal(selected.Schema)
+	if strings.Contains(string(raw), `"x-sentry-unsupported"`) {
+		return SchemaUnavailable, fmt.Errorf("schema contains unsupported recursive reference")
+	}
+	key := string(raw)
+	var schema *jsonschema.Schema
+	if cached, ok := schemaCache.Load(key); ok {
+		schema = cached.(*jsonschema.Schema)
+	} else {
+		compiler := jsonschema.NewCompiler()
+		if err := compiler.AddResource("https://sentry.local/schema", selected.Schema); err != nil {
+			return SchemaUnavailable, err
 		}
-	}
-
-	respMap, ok := respNode.(map[string]interface{})
-	if !ok {
-		schemaCache.Store(cacheKey, nil)
-		return true, nil
-	}
-
-	contentNode, ok := respMap["content"]
-	if !ok {
-		schemaCache.Store(cacheKey, nil)
-		return true, nil
-	}
-	contentMap, ok := contentNode.(map[string]interface{})
-	if !ok {
-		schemaCache.Store(cacheKey, nil)
-		return true, nil
-	}
-
-	// Look for application/json or similar
-	var mediaTypeNode interface{}
-	for k, v := range contentMap {
-		if strings.Contains(strings.ToLower(k), "application/json") {
-			mediaTypeNode = v
-			break
+		compiled, err := compiler.Compile("https://sentry.local/schema")
+		if err != nil {
+			return SchemaUnavailable, err
 		}
+		actual, _ := schemaCache.LoadOrStore(key, compiled)
+		schema = actual.(*jsonschema.Schema)
 	}
-
-	if mediaTypeNode == nil {
-		schemaCache.Store(cacheKey, nil)
-		return true, nil
+	var value any
+	if err := json.Unmarshal([]byte(body), &value); err != nil {
+		return SchemaMismatched, err
 	}
-
-	mediaTypeMap, ok := mediaTypeNode.(map[string]interface{})
-	if !ok {
-		schemaCache.Store(cacheKey, nil)
-		return true, nil
+	if err := schema.Validate(value); err != nil {
+		return SchemaMismatched, err
 	}
-
-	schemaNode, ok := mediaTypeMap["schema"]
-	if !ok {
-		schemaCache.Store(cacheKey, nil)
-		return true, nil
-	}
-
-	// Compile the schema
-	schemaID := fmt.Sprintf("schema://%s", uuid.New().String()) // inline schemas need unique urls sometimes, but AddResource works
-	compiler.AddResource(schemaID, schemaNode)
-	schema, err := compiler.Compile(schemaID)
-	if err != nil {
-		return false, fmt.Errorf("compiling schema: %w", err)
-	}
-
-	// Cache it
-	schemaCache.Store(cacheKey, schema)
-
-	// Validate
-	var v interface{}
-	if err := json.Unmarshal([]byte(body), &v); err != nil {
-		return false, fmt.Errorf("invalid json body: %w", err)
-	}
-	if err := schema.Validate(v); err != nil {
-		return false, err
-	}
-	return true, nil
+	return SchemaMatched, nil
+}
+func ValidateSchema(responsesJSON string, status int, contentType, body string) (bool, error) {
+	state, err := InspectSchema(responsesJSON, status, contentType, body, false)
+	return state == SchemaMatched, err
 }

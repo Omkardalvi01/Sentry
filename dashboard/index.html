@@ -1,0 +1,302 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Sentry · API investigation</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <a class="brand" href="#overview"
+          ><span class="brand-mark">S</span
+          ><span>SENTRY<small>API investigation</small></span></a
+        >
+        <nav aria-label="Primary navigation" id="nav">
+          <a href="#overview" data-view="overview">◈ <span>Overview</span></a
+          ><a href="#endpoints" data-view="endpoints"
+            >⌘ <span>Endpoints</span></a
+          ><a href="#scans" data-view="scans">⌁ <span>Scans</span></a
+          ><a href="#findings" data-view="findings">△ <span>Findings</span></a
+          ><a href="#traffic" data-view="traffic">≋ <span>Traffic</span></a
+          ><a href="#health" data-view="health">⊙ <span>System health</span></a>
+        </nav>
+        <div class="sidebar-foot">
+          <span id="connection">Checking services</span
+          ><small>Inventory + active verification</small>
+        </div>
+      </aside>
+      <main>
+        <header class="workspace-header">
+          <div class="scope-fields">
+            <label
+              >API / version<select id="workspace-api">
+                <option value="">All APIs</option>
+              </select></label
+            ><label
+              >Target<select id="workspace-target">
+                <option value="">All targets</option>
+              </select></label
+            >
+          </div>
+          <button class="primary" id="new-scan">＋ New scan</button>
+        </header>
+        <div class="content">
+          <div class="breadcrumb" id="breadcrumb"></div>
+          <div class="page-heading">
+            <div>
+              <div class="eyebrow" id="page-eyebrow">WORKSPACE</div>
+              <h1 id="page-title">Overview</h1>
+              <p id="page-description"></p>
+            </div>
+            <div class="heading-actions">
+              <button id="refresh">↻ Refresh</button
+              ><button id="density" aria-pressed="false">Compact rows</button>
+            </div>
+          </div>
+          <section id="scan-summary" hidden></section>
+          <section id="overview" hidden></section>
+          <section id="health" hidden></section>
+          <section id="explorer" hidden>
+            <div class="filter-bar">
+              <label class="search-label"
+                >Search<input
+                  type="search"
+                  id="search"
+                  placeholder="Search paths, methods, or context…"
+              /></label>
+              <div id="filter-controls"></div>
+              <button id="clear-filters">Clear all</button>
+            </div>
+            <div id="filter-chips" class="filter-chips"></div>
+            <div id="new-results" class="notice" hidden>
+              <span
+                >New data is available. Your current rows have stayed in
+                place.</span
+              ><button id="load-new">Load new results</button>
+            </div>
+            <div class="table-toolbar">
+              <span id="result-count" role="status">Loading…</span>
+              <div>
+                <label
+                  >Rows<select id="page-size">
+                    <option>25</option>
+                    <option selected>50</option>
+                    <option>100</option>
+                  </select></label
+                ><button id="export-csv">Export CSV</button
+                ><button id="export-json">Export JSON</button>
+              </div>
+            </div>
+            <div class="table-scroll">
+              <table id="results-table">
+                <thead></thead>
+                <tbody></tbody>
+              </table>
+            </div>
+            <div id="table-message" class="table-message" hidden></div>
+            <div class="pagination">
+              <span id="page-info"></span>
+              <div>
+                <button id="previous">← Previous</button
+                ><button id="next">Next →</button>
+              </div>
+            </div>
+          </section>
+        </div>
+      </main>
+    </div>
+    <div id="detail-backdrop" class="detail-backdrop" hidden></div>
+    <aside
+      id="detail"
+      class="detail-panel"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="detail-title"
+      hidden
+      tabindex="-1"
+    >
+      <div class="detail-header">
+        <div>
+          <div class="eyebrow" id="detail-kind">EVIDENCE</div>
+          <h2 id="detail-title"></h2>
+        </div>
+        <button id="close-detail" aria-label="Close evidence panel">✕</button>
+      </div>
+      <div id="detail-tabs" class="tabs" role="tablist"></div>
+      <div id="detail-body"></div>
+    </aside>
+    <dialog id="scan-dialog" aria-labelledby="scan-dialog-title">
+      <form id="scan-form">
+        <div class="dialog-header">
+          <div>
+            <div class="eyebrow">SCAN CONFIGURATION</div>
+            <h2 id="scan-dialog-title">Start with a clear request plan.</h2>
+          </div>
+          <button
+            type="button"
+            id="close-scan"
+            aria-label="Close scan configuration"
+          >
+            ✕
+          </button>
+        </div>
+        <p class="muted">
+          Active scans send real requests. Preview shows the URLs and checks
+          before execution.
+        </p>
+        <div class="form-grid">
+          <label>API / version<select id="scan-api" required></select></label
+          ><label
+            >Target base URL<input
+              id="scan-target"
+              type="url"
+              required
+              placeholder="http://127.0.0.1:9001"
+          /></label>
+        </div>
+        <label
+          >Scan scope<select id="scan-scope">
+            <option value="all">Full API inventory and discovery checks</option>
+            <option value="selected">
+              One operation and its related checks
+            </option>
+          </select></label
+        >
+        <label id="operation-field" hidden
+          >Operation<input
+            id="operation-search"
+            type="search"
+            placeholder="Search a method or route…" /><select
+            id="scan-operation"
+          ></select
+        ></label>
+        <div class="section-label">
+          Authentication headers
+          <span class="muted"
+            >Values stay in memory; saved evidence is redacted.</span
+          >
+        </div>
+        <div id="header-rows"></div>
+        <button type="button" id="add-header">＋ Add header</button>
+        <details>
+          <summary>Advanced JSON header editor</summary>
+          <label
+            >Headers object<textarea
+              id="headers-json"
+              placeholder='{"Authorization":"Bearer …"}'
+            ></textarea></label
+          ><button type="button" id="apply-json">Apply JSON</button>
+        </details>
+        <fieldset>
+          <legend>Checks to run</legend>
+          <div class="strategy-grid">
+            <label
+              ><input
+                type="checkbox"
+                name="strategy"
+                value="deprecated_alive"
+                checked
+              />
+              Deprecated operations</label
+            ><label
+              ><input
+                type="checkbox"
+                name="strategy"
+                value="version_probe"
+                checked
+              />
+              Version variants</label
+            ><label
+              ><input
+                type="checkbox"
+                name="strategy"
+                value="method_probe"
+                checked
+              />
+              Undocumented methods</label
+            ><label
+              ><input
+                type="checkbox"
+                name="strategy"
+                value="shadow_path"
+                checked
+              />
+              Shadow endpoints</label
+            ><label
+              ><input
+                type="checkbox"
+                name="strategy"
+                value="auth_bypass"
+                checked
+              />
+              Authentication comparison</label
+            >
+          </div>
+        </fieldset>
+        <details>
+          <summary>Request limits and execution options</summary>
+          <div class="form-grid">
+            <label
+              >Workers<input
+                id="scan-workers"
+                type="number"
+                min="1"
+                max="64"
+                value="5" /></label
+            ><label
+              >Requests / second<input
+                id="scan-rps"
+                type="number"
+                min="1"
+                max="1000"
+                value="10" /></label
+            ><label
+              >Total request budget<input
+                id="scan-budget"
+                type="number"
+                min="0"
+                value="500"
+              /><small
+                >Includes baseline controls; 0 means unlimited.</small
+              ></label
+            >
+          </div>
+          <label class="checkbox-label"
+            ><input id="allow-mutating" type="checkbox" /> Enable mutating
+            methods on a resettable target</label
+          ><label class="checkbox-label"
+            ><input id="dry-run" type="checkbox" /> Dry run: record the plan,
+            send zero requests</label
+          >
+        </details>
+        <div id="scan-error" class="error-message" role="alert" hidden></div>
+        <div class="dialog-actions">
+          <button type="button" id="preview-scan">Preview requests</button
+          ><button class="primary" id="submit-scan" type="submit">
+            Start scan →
+          </button>
+        </div>
+        <div id="preview-panel" hidden>
+          <div class="section-label" id="preview-count"></div>
+          <div class="table-scroll">
+            <table id="preview-table">
+              <thead>
+                <tr>
+                  <th>Method</th>
+                  <th>URL</th>
+                  <th>Check</th>
+                  <th>Execution</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+      </form>
+    </dialog>
+    <div id="toast" role="status" aria-live="polite" hidden></div>
+    <script type="module" src="app.js"></script>
+  </body>
+</html>
