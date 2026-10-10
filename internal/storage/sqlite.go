@@ -42,7 +42,7 @@ func (s *TrafficStore) InitDB() error {
 		return err
 	}
 	// Upgrade pre-research databases, including the old seed schema.
-	cols := map[string]string{"target_origin": "TEXT DEFAULT ''", "graph_path_template": "TEXT", "graph_deprecated": "BOOLEAN", "graph_security": "TEXT", "graph_tag": "TEXT", "graph_dependency_count": "INTEGER DEFAULT 0", "spec_title": "TEXT DEFAULT ''", "spec_version": "TEXT DEFAULT ''", "graph_known": "BOOLEAN", "graph_context_status": "TEXT DEFAULT 'unknown'", "training_eligible": "BOOLEAN DEFAULT 0"}
+	cols := map[string]string{"target_origin": "TEXT DEFAULT ''", "graph_path_template": "TEXT", "graph_deprecated": "BOOLEAN", "graph_security": "TEXT", "graph_tag": "TEXT", "graph_dependency_count": "INTEGER DEFAULT 0", "spec_title": "TEXT DEFAULT ''", "spec_version": "TEXT DEFAULT ''", "graph_known": "BOOLEAN", "graph_context_status": "TEXT DEFAULT 'unknown'", "training_eligible": "BOOLEAN DEFAULT 0", "response_time_ms": "REAL", "response_size_bytes": "INTEGER", "review_label": "INTEGER CHECK (review_label IN (0,1) OR review_label IS NULL)"}
 	rows, err := s.db.Query("PRAGMA table_info(api_traffic)")
 	if err != nil {
 		return err
@@ -70,12 +70,19 @@ func (s *TrafficStore) InitDB() error {
 	return err
 }
 
-const insertEvent = `INSERT INTO api_traffic (request_id,method,path,query_params,request_headers,request_body,status_code,response_headers,response_body,timestamp,graph_path_template,graph_deprecated,graph_security,graph_tag,graph_dependency_count,spec_title,spec_version,graph_known,graph_context_status,training_eligible,target_origin) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(request_id) DO NOTHING`
+const insertEvent = `INSERT INTO api_traffic (request_id,method,path,query_params,request_headers,request_body,status_code,response_headers,response_body,response_time_ms,response_size_bytes,timestamp,graph_path_template,graph_deprecated,graph_security,graph_tag,graph_dependency_count,spec_title,spec_version,graph_known,graph_context_status,training_eligible,target_origin) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(request_id) DO NOTHING`
 
 func eventArgs(e model.TrafficEvent) []any {
 	req, _ := json.Marshal(e.RequestHeaders)
 	res, _ := json.Marshal(e.ResponseHeaders)
-	return []any{e.RequestID, e.Method, e.Path, e.QueryParams, string(req), e.RequestBody, e.StatusCode, string(res), e.ResponseBody, e.Timestamp.UTC().Format(time.RFC3339Nano), e.GraphPathTemplate, e.GraphDeprecated, e.GraphSecurity, e.GraphTag, 0, e.SpecTitle, e.SpecVersion, e.GraphKnown, e.GraphContextStatus, e.TrainingEligible, e.TargetOrigin}
+	var responseTime, responseSize any
+	if e.ResponseTimeMS > 0 {
+		responseTime = e.ResponseTimeMS
+	}
+	if e.ResponseSizeBytes > 0 {
+		responseSize = e.ResponseSizeBytes
+	}
+	return []any{e.RequestID, e.Method, e.Path, e.QueryParams, string(req), e.RequestBody, e.StatusCode, string(res), e.ResponseBody, responseTime, responseSize, e.Timestamp.UTC().Format(time.RFC3339Nano), e.GraphPathTemplate, e.GraphDeprecated, e.GraphSecurity, e.GraphTag, 0, e.SpecTitle, e.SpecVersion, e.GraphKnown, e.GraphContextStatus, e.TrainingEligible, e.TargetOrigin}
 }
 
 func (s *TrafficStore) InsertBatch(ctx context.Context, events []model.TrafficEvent) error {
@@ -178,7 +185,7 @@ func (s *TrafficStore) Traffic(ctx context.Context, limit, offset int, anomalies
 	return out, rows.Err()
 }
 func (s *TrafficStore) Pending(ctx context.Context) ([]model.TrafficEvent, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT t.request_id,t.method,t.path,t.request_body,t.response_body,t.status_code,t.timestamp,t.graph_path_template,t.graph_deprecated,t.graph_security,t.spec_title,t.spec_version,t.graph_known,t.graph_context_status FROM api_traffic t JOIN predictions p ON p.request_id=t.request_id WHERE p.status='pending' ORDER BY t.id LIMIT 100`)
+	rows, err := s.db.QueryContext(ctx, `SELECT t.request_id,t.method,t.path,t.query_params,t.request_headers,t.request_body,t.response_body,t.response_headers,t.status_code,t.response_time_ms,t.response_size_bytes,t.timestamp,t.graph_path_template,t.graph_deprecated,t.graph_security,t.spec_title,t.spec_version,t.graph_known,t.graph_context_status FROM api_traffic t JOIN predictions p ON p.request_id=t.request_id WHERE p.status='pending' ORDER BY t.id LIMIT 100`)
 	if err != nil {
 		return nil, err
 	}
@@ -187,10 +194,21 @@ func (s *TrafficStore) Pending(ctx context.Context) ([]model.TrafficEvent, error
 	for rows.Next() {
 		var e model.TrafficEvent
 		var ts string
+		var requestHeaders, responseHeaders sql.NullString
+		var responseTime sql.NullFloat64
+		var responseSize sql.NullInt64
 		var known sql.NullBool
-		if err = rows.Scan(&e.RequestID, &e.Method, &e.Path, &e.RequestBody, &e.ResponseBody, &e.StatusCode, &ts, &e.GraphPathTemplate, &e.GraphDeprecated, &e.GraphSecurity, &e.SpecTitle, &e.SpecVersion, &known, &e.GraphContextStatus); err != nil {
+		if err = rows.Scan(&e.RequestID, &e.Method, &e.Path, &e.QueryParams, &requestHeaders, &e.RequestBody, &e.ResponseBody, &responseHeaders, &e.StatusCode, &responseTime, &responseSize, &ts, &e.GraphPathTemplate, &e.GraphDeprecated, &e.GraphSecurity, &e.SpecTitle, &e.SpecVersion, &known, &e.GraphContextStatus); err != nil {
 			return nil, err
 		}
+		if responseTime.Valid {
+			e.ResponseTimeMS = responseTime.Float64
+		}
+		if responseSize.Valid {
+			e.ResponseSizeBytes = responseSize.Int64
+		}
+		_ = json.Unmarshal([]byte(requestHeaders.String), &e.RequestHeaders)
+		_ = json.Unmarshal([]byte(responseHeaders.String), &e.ResponseHeaders)
 		e.Timestamp, _ = time.Parse(time.RFC3339Nano, ts)
 		if known.Valid {
 			e.GraphKnown = &known.Bool

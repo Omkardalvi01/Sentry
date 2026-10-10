@@ -1,0 +1,462 @@
+{
+  "aggregate": {
+    "active_only": {
+      "classes": {
+        "shadow": {
+          "f1": 0.5,
+          "fn": 3,
+          "fp": 3,
+          "precision": 0.5,
+          "recall": 0.5,
+          "tp": 3
+        },
+        "zombie": {
+          "f1": 1.0,
+          "fn": 0,
+          "fp": 0,
+          "precision": 1.0,
+          "recall": 1.0,
+          "tp": 12
+        }
+      },
+      "evaluated_apps": 3,
+      "f1": 0.833333,
+      "fn": 3,
+      "fp": 3,
+      "precision": 0.833333,
+      "probes_sent": 594,
+      "recall": 0.833333,
+      "seconds": 5.772,
+      "tp": 15
+    },
+    "graph_plus_passive_inventory": {
+      "classes": {
+        "shadow": {
+          "f1": 0.8,
+          "fn": 0,
+          "fp": 3,
+          "precision": 0.666667,
+          "recall": 1.0,
+          "tp": 6
+        },
+        "zombie": {
+          "f1": 1.0,
+          "fn": 0,
+          "fp": 0,
+          "precision": 1.0,
+          "recall": 1.0,
+          "tp": 12
+        }
+      },
+      "evaluated_apps": 3,
+      "f1": 0.923077,
+      "fn": 0,
+      "fp": 3,
+      "precision": 0.857143,
+      "probes_sent": 612,
+      "recall": 1.0,
+      "seconds": 9.409,
+      "tp": 18
+    }
+  },
+  "apps": {
+    "gateway": {
+      "ground_truth_endpoints": 6,
+      "modes": {
+        "active_only": {
+          "classes": {
+            "shadow": {
+              "f1": 0.5,
+              "fn": 1,
+              "fp": 1,
+              "precision": 0.5,
+              "recall": 0.5,
+              "tp": 1
+            },
+            "zombie": {
+              "f1": 1.0,
+              "fn": 0,
+              "fp": 0,
+              "precision": 1.0,
+              "recall": 1.0,
+              "tp": 4
+            }
+          },
+          "f1": 0.833333,
+          "findings": 8,
+          "fn": 1,
+          "fp": 1,
+          "precision": 0.833333,
+          "probes_sent": 198,
+          "recall": 0.833333,
+          "seconds": 4.169,
+          "status": "completed",
+          "tp": 5,
+          "verified_endpoints": [
+            [
+              "GET",
+              "/debug"
+            ],
+            [
+              "GET",
+              "/openapi.json"
+            ],
+            [
+              "GET",
+              "/v1/items/{id}"
+            ],
+            [
+              "GET",
+              "/v1/profile"
+            ],
+            [
+              "GET",
+              "/v1/protected"
+            ],
+            [
+              "GET",
+              "/v1/public"
+            ]
+          ]
+        },
+        "graph_plus_passive_inventory": {
+          "classes": {
+            "shadow": {
+              "f1": 0.8,
+              "fn": 0,
+              "fp": 1,
+              "precision": 0.666667,
+              "recall": 1.0,
+              "tp": 2
+            },
+            "zombie": {
+              "f1": 1.0,
+              "fn": 0,
+              "fp": 0,
+              "precision": 1.0,
+              "recall": 1.0,
+              "tp": 4
+            }
+          },
+          "f1": 0.923077,
+          "findings": 10,
+          "fn": 0,
+          "fp": 1,
+          "precision": 0.857143,
+          "probes_sent": 204,
+          "recall": 1.0,
+          "seconds": 7.512,
+          "status": "completed",
+          "tp": 6,
+          "verified_endpoints": [
+            [
+              "GET",
+              "/debug"
+            ],
+            [
+              "GET",
+              "/openapi.json"
+            ],
+            [
+              "GET",
+              "/private/export"
+            ],
+            [
+              "GET",
+              "/v1/items/{id}"
+            ],
+            [
+              "GET",
+              "/v1/profile"
+            ],
+            [
+              "GET",
+              "/v1/protected"
+            ],
+            [
+              "GET",
+              "/v1/public"
+            ]
+          ]
+        }
+      },
+      "passive_candidates": 4,
+      "target": "http://127.0.0.1:37657"
+    },
+    "resource": {
+      "ground_truth_endpoints": 6,
+      "modes": {
+        "active_only": {
+          "classes": {
+            "shadow": {
+              "f1": 0.5,
+              "fn": 1,
+              "fp": 1,
+              "precision": 0.5,
+              "recall": 0.5,
+              "tp": 1
+            },
+            "zombie": {
+              "f1": 1.0,
+              "fn": 0,
+              "fp": 0,
+              "precision": 1.0,
+              "recall": 1.0,
+              "tp": 4
+            }
+          },
+          "f1": 0.833333,
+          "findings": 8,
+          "fn": 1,
+          "fp": 1,
+          "precision": 0.833333,
+          "probes_sent": 198,
+          "recall": 0.833333,
+          "seconds": 0.732,
+          "status": "completed",
+          "tp": 5,
+          "verified_endpoints": [
+            [
+              "GET",
+              "/debug"
+            ],
+            [
+              "GET",
+              "/openapi.json"
+            ],
+            [
+              "GET",
+              "/v1/items/{id}"
+            ],
+            [
+              "GET",
+              "/v1/profile"
+            ],
+            [
+              "GET",
+              "/v1/protected"
+            ],
+            [
+              "GET",
+              "/v1/public"
+            ]
+          ]
+        },
+        "graph_plus_passive_inventory": {
+          "classes": {
+            "shadow": {
+              "f1": 0.8,
+              "fn": 0,
+              "fp": 1,
+              "precision": 0.666667,
+              "recall": 1.0,
+              "tp": 2
+            },
+            "zombie": {
+              "f1": 1.0,
+              "fn": 0,
+              "fp": 0,
+              "precision": 1.0,
+              "recall": 1.0,
+              "tp": 4
+            }
+          },
+          "f1": 0.923077,
+          "findings": 10,
+          "fn": 0,
+          "fp": 1,
+          "precision": 0.857143,
+          "probes_sent": 204,
+          "recall": 1.0,
+          "seconds": 0.958,
+          "status": "completed",
+          "tp": 6,
+          "verified_endpoints": [
+            [
+              "GET",
+              "/debug"
+            ],
+            [
+              "GET",
+              "/openapi.json"
+            ],
+            [
+              "GET",
+              "/private/export"
+            ],
+            [
+              "GET",
+              "/v1/items/{id}"
+            ],
+            [
+              "GET",
+              "/v1/profile"
+            ],
+            [
+              "GET",
+              "/v1/protected"
+            ],
+            [
+              "GET",
+              "/v1/public"
+            ]
+          ]
+        }
+      },
+      "passive_candidates": 4,
+      "target": "http://127.0.0.1:40591"
+    },
+    "versioned": {
+      "ground_truth_endpoints": 6,
+      "modes": {
+        "active_only": {
+          "classes": {
+            "shadow": {
+              "f1": 0.5,
+              "fn": 1,
+              "fp": 1,
+              "precision": 0.5,
+              "recall": 0.5,
+              "tp": 1
+            },
+            "zombie": {
+              "f1": 1.0,
+              "fn": 0,
+              "fp": 0,
+              "precision": 1.0,
+              "recall": 1.0,
+              "tp": 4
+            }
+          },
+          "f1": 0.833333,
+          "findings": 8,
+          "fn": 1,
+          "fp": 1,
+          "precision": 0.833333,
+          "probes_sent": 198,
+          "recall": 0.833333,
+          "seconds": 0.871,
+          "status": "completed",
+          "tp": 5,
+          "verified_endpoints": [
+            [
+              "GET",
+              "/debug"
+            ],
+            [
+              "GET",
+              "/openapi.json"
+            ],
+            [
+              "GET",
+              "/v1/items/{id}"
+            ],
+            [
+              "GET",
+              "/v1/profile"
+            ],
+            [
+              "GET",
+              "/v1/protected"
+            ],
+            [
+              "GET",
+              "/v1/public"
+            ]
+          ]
+        },
+        "graph_plus_passive_inventory": {
+          "classes": {
+            "shadow": {
+              "f1": 0.8,
+              "fn": 0,
+              "fp": 1,
+              "precision": 0.666667,
+              "recall": 1.0,
+              "tp": 2
+            },
+            "zombie": {
+              "f1": 1.0,
+              "fn": 0,
+              "fp": 0,
+              "precision": 1.0,
+              "recall": 1.0,
+              "tp": 4
+            }
+          },
+          "f1": 0.923077,
+          "findings": 10,
+          "fn": 0,
+          "fp": 1,
+          "precision": 0.857143,
+          "probes_sent": 204,
+          "recall": 1.0,
+          "seconds": 0.939,
+          "status": "completed",
+          "tp": 6,
+          "verified_endpoints": [
+            [
+              "GET",
+              "/debug"
+            ],
+            [
+              "GET",
+              "/openapi.json"
+            ],
+            [
+              "GET",
+              "/private/export"
+            ],
+            [
+              "GET",
+              "/v1/items/{id}"
+            ],
+            [
+              "GET",
+              "/v1/profile"
+            ],
+            [
+              "GET",
+              "/v1/protected"
+            ],
+            [
+              "GET",
+              "/v1/public"
+            ]
+          ]
+        }
+      },
+      "passive_candidates": 4,
+      "target": "http://127.0.0.1:44495"
+    }
+  },
+  "dataset": "Sentry controlled local API testbeds",
+  "evaluation": "Graph-backed zombie and shadow API inventory detection",
+  "ingestion": {
+    "gateway": {
+      "seconds": 0.021,
+      "spec_sha256": "4fcd00fc6ffbadcf1688d6cbaafa0e306ee635a3f8f51f937475783988884684",
+      "summary": "\u23f3 Parsing spec: /home/lain/Desktop/Dev/Sentry/Sentry/evaluation/results/graph-inventory-raw/gateway/spec.json\n\u2713 Parsed: gateway v1 (openapi3 3.0.3)\n\u23f3 Connecting to Memgraph: bolt://127.0.0.1:17687\n\u2713 Connected to Memgraph\n\u26a0 Wiping existing graph data...\n\u2713 Graph wiped\n\u23f3 Ingesting into Memgraph...\n\n\u2713 Ingested \"gateway\" v1 (openapi3 3.0.3)\n  Nodes: 27 (1 spec, 1 servers, 0 tags, 1 security, 12 paths, 12 operations)\n  Edges: 27\n  Time:  8ms\n"
+    },
+    "resource": {
+      "seconds": 0.02,
+      "spec_sha256": "b0b9ac295a4b4a24fccaac45f59eb7a5f3f763ef1eee5b74c8e03acc9dd8de57",
+      "summary": "\u23f3 Parsing spec: /home/lain/Desktop/Dev/Sentry/Sentry/evaluation/results/graph-inventory-raw/resource/spec.json\n\u2713 Parsed: resource v1 (openapi3 3.0.3)\n\u23f3 Connecting to Memgraph: bolt://127.0.0.1:17687\n\u2713 Connected to Memgraph\n\u26a0 Wiping existing graph data...\n\u2713 Graph wiped\n\u23f3 Ingesting into Memgraph...\n\n\u2713 Ingested \"resource\" v1 (openapi3 3.0.3)\n  Nodes: 27 (1 spec, 1 servers, 0 tags, 1 security, 12 paths, 12 operations)\n  Edges: 27\n  Time:  8ms\n"
+    },
+    "versioned": {
+      "seconds": 0.026,
+      "spec_sha256": "9bccc7e98d1b5d19d49608e6fef46f57a04f82d94a2c13d1af771cd5945dfd2d",
+      "summary": "\u23f3 Parsing spec: /home/lain/Desktop/Dev/Sentry/Sentry/evaluation/results/graph-inventory-raw/versioned/spec.json\n\u2713 Parsed: versioned v1 (openapi3 3.0.3)\n\u23f3 Connecting to Memgraph: bolt://127.0.0.1:17687\n\u2713 Connected to Memgraph\n\u26a0 Wiping existing graph data...\n\u2713 Graph wiped\n\u23f3 Ingesting into Memgraph...\n\n\u2713 Ingested \"versioned\" v1 (openapi3 3.0.3)\n  Nodes: 27 (1 spec, 1 servers, 0 tags, 1 security, 12 paths, 12 operations)\n  Edges: 27\n  Time:  10ms\n"
+    }
+  },
+  "limitations": [
+    "Controlled synthetic API behavior and labels, not independent production deployments.",
+    "Passive candidates are drawn from held-out test traffic; this measures verification after observation, not discovery from arbitrary logs.",
+    "This measures API inventory discrepancies, not downstream service impact or blast radius."
+  ],
+  "memgraph_uri": "bolt://127.0.0.1:17687",
+  "protocol": "Ingest each OpenAPI spec into Memgraph; run the production graph-backed scan. Compare active-only probes with graph inventory plus held-out passive unknown-route candidates. Exclude auth-bypass findings from inventory metrics.",
+  "request_budget_per_scan": 250,
+  "sentry_revision": "94f77addfa46ef461a627b7b57c41bc62202d779",
+  "strategies": "deprecated_alive,version_probe,method_probe,shadow_path,auth_bypass"
+}

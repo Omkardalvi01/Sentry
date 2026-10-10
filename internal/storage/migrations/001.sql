@@ -2,9 +2,11 @@ CREATE TABLE IF NOT EXISTS api_traffic (
  id INTEGER PRIMARY KEY AUTOINCREMENT, request_id TEXT UNIQUE NOT NULL,
  method TEXT, path TEXT, query_params TEXT, request_headers TEXT, request_body TEXT,
  status_code INTEGER, response_headers TEXT, response_body TEXT, timestamp DATETIME,
+ response_time_ms REAL, response_size_bytes INTEGER,
  graph_path_template TEXT, graph_deprecated BOOLEAN, graph_security TEXT, graph_tag TEXT,
  graph_dependency_count INTEGER DEFAULT 0, spec_title TEXT DEFAULT '', spec_version TEXT DEFAULT '',
- graph_known BOOLEAN, graph_context_status TEXT DEFAULT 'unknown', training_eligible BOOLEAN DEFAULT 0
+ graph_known BOOLEAN, graph_context_status TEXT DEFAULT 'unknown', training_eligible BOOLEAN DEFAULT 0,
+ review_label INTEGER CHECK (review_label IN (0,1) OR review_label IS NULL)
 );
 CREATE INDEX IF NOT EXISTS idx_traffic_path ON api_traffic(path);
 CREATE INDEX IF NOT EXISTS idx_traffic_timestamp ON api_traffic(timestamp);

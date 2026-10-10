@@ -1,0 +1,56 @@
+{
+  "balanced_accuracy": 0.44943,
+  "dataset": "FUR-API",
+  "db_path": "results/fur-api-20261006T142920091523.db",
+  "excluded_test_invalid_status": 1,
+  "excluded_train_invalid_status": 12,
+  "f1": 0.164706,
+  "false_negative": 94,
+  "false_positive": 474,
+  "limitations": [
+    "No API spec or graph topology is supplied by FUR-API; graph features are zero.",
+    "FUR-API response_time, header content, and response_size fields are not model features.",
+    "Unsupervised model scores are used at Sentry's fixed decision threshold; no tuning on test labels."
+  ],
+  "model_version": "771100e5",
+  "precision": 0.10566,
+  "prediction_records": 1149,
+  "prediction_seconds": 17.388,
+  "protocol": "Train on normal training rows with valid HTTP status codes; exclude labeled training anomalies. Predict held-out valid rows without cache.",
+  "reason_counts_by_outcome": {
+    "fn": {},
+    "fp": {
+      "ML Topology/Data Anomaly": 9,
+      "Unseen endpoint": 466,
+      "Unseen status code": 1
+    },
+    "tn": {},
+    "tp": {
+      "ML Topology/Data Anomaly": 5,
+      "Unseen endpoint": 51
+    }
+  },
+  "recall": 0.373333,
+  "source_revision": "fe63412637b60f7273d71613d9b8d39acd286187",
+  "specificity": 0.525526,
+  "test_events_per_second": 66.08,
+  "test_label_counts": {
+    "anomaly": 150,
+    "normal": 1000
+  },
+  "test_rows_used": 1149,
+  "test_sha256": "7a71ae7ca2a7a54efb1507c7d3c05ca8963c313b676ae2c3be397be016809a1c",
+  "train_label_counts": {
+    "anomaly": 60,
+    "normal": 20000
+  },
+  "train_sha256": "b86549a4e3167754cf747d7a12c704a40a6bb36560818d27e2fa4ad55fe02acb",
+  "training_rows_used": 19988,
+  "training_seconds": 0.369,
+  "true_negative": 525,
+  "true_positive": 56,
+  "unseen_test_endpoints": {
+    "anomaly": 51,
+    "normal": 466
+  }
+}

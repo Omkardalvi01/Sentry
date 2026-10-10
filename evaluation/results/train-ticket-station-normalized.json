@@ -1,0 +1,74 @@
+{
+  "captured_at": "2026-10-06T10:52:06.490519+00:00",
+  "ingest": {
+    "elapsed_seconds": 0.164,
+    "exit_code": 0,
+    "log": "results/train-ticket-station-normalized-ingest.log"
+  },
+  "measurements": {
+    "findings": [
+      {
+        "method": "DELETE",
+        "path": "/api/v1/stationservice/stations/idlist",
+        "severity": "MEDIUM",
+        "status_code": 200,
+        "strategy": "method_probe",
+        "title": "Undocumented HTTP method accepted"
+      },
+      {
+        "method": "DELETE",
+        "path": "/api/v1/stationservice/stations/namelist",
+        "severity": "MEDIUM",
+        "status_code": 200,
+        "strategy": "method_probe",
+        "title": "Undocumented HTTP method accepted"
+      },
+      {
+        "method": "GET",
+        "path": "/v2/api-docs",
+        "severity": "LOW",
+        "status_code": 200,
+        "strategy": "shadow_path",
+        "title": "Shadow/undocumented endpoint found"
+      }
+    ],
+    "findings_by_severity": {
+      "LOW": 1,
+      "MEDIUM": 2
+    },
+    "findings_by_strategy": {
+      "method_probe": 2,
+      "shadow_path": 1
+    },
+    "scans": [
+      {
+        "completed_at": "2026-10-06T10:52:27.088749353Z",
+        "findings_count": 3,
+        "id": "2e039220-ed62-43aa-9eb0-4b2f3a11068a",
+        "probes_sent": 107,
+        "started_at": "2026-10-06T10:52:06.672628468Z",
+        "status": "completed"
+      }
+    ],
+    "spec_operations": 20,
+    "spec_snapshots": 1,
+    "traffic_events": 0
+  },
+  "name": "train-ticket-station-normalized",
+  "parameters": {
+    "rps": 5,
+    "strategies": "deprecated_alive,version_probe,method_probe,shadow_path,auth_bypass",
+    "workers": 3
+  },
+  "scan": {
+    "elapsed_seconds": 20.456,
+    "exit_code": 0,
+    "log": "results/train-ticket-station-normalized-scan.log"
+  },
+  "source_revision": "313886e99befb94be6cd45f085c98e0019f59829",
+  "spec_path": "evaluation/results/station-swagger.normalized.json",
+  "spec_sha256": "306d174894ea54bf3311c181c0b4474d44cb0241c49b25a92ce7e4ab64c0536b",
+  "status": "completed",
+  "target": "http://127.0.0.1:12345",
+  "target_http_status": 403
+}

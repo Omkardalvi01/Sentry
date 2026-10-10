@@ -1,0 +1,61 @@
+{
+  "balanced_accuracy": 0.586807,
+  "dataset": "FUR-API",
+  "db_path": "results/fur-api-20261008T130712550839.db",
+  "detector_sha256": "841bf7ebf3a2ced80afb37805054564f7c2e79aba14e93ce62035eb6b3044d16",
+  "excluded_test_invalid_status": 1,
+  "excluded_train_invalid_status": 12,
+  "f1": 0.28692,
+  "false_negative": 116,
+  "false_positive": 53,
+  "feature_version": "endpoint-relative-v2",
+  "limitations": [
+    "No API spec or service graph topology is supplied by FUR-API; graph-context feature slots are unknown.",
+    "Request header names are used as presence indicators; raw header values are not modeled.",
+    "The detector uses its training-only validation split to calibrate a 5% target false-positive rate; no test labels are used for tuning."
+  ],
+  "model_version": "b221fecd-6d67-471d-9267-2e81ad908db1",
+  "observed_validation_fpr": 0.04981412639405204,
+  "precision": 0.390805,
+  "prediction_records": 1149,
+  "prediction_seconds": 7.689,
+  "protocol": "Train the current DetectorService on valid normal training rows marked training_eligible; exclude labeled training anomalies. Sort by timestamp, train on the first 80%, and calibrate the threshold on the final 20% at a 5% target false-positive rate. Score held-out valid rows without cache or test-label tuning.",
+  "reason_counts_by_outcome": {
+    "fn": {},
+    "fp": {
+      "Behavior differs from the historical training baseline": 28,
+      "Body size exceeds the validated endpoint-relative baseline": 25
+    },
+    "tn": {},
+    "tp": {
+      "Behavior differs from the historical training baseline": 30,
+      "Body size exceeds the validated endpoint-relative baseline": 4
+    }
+  },
+  "recall": 0.226667,
+  "sentry_revision": "94f77addfa46ef461a627b7b57c41bc62202d779",
+  "sentry_worktree_dirty": true,
+  "source_revision": "fe63412637b60f7273d71613d9b8d39acd286187",
+  "specificity": 0.946947,
+  "target_validation_fpr": 0.05,
+  "test_events_per_second": 149.43,
+  "test_label_counts": {
+    "anomaly": 150,
+    "normal": 1000
+  },
+  "test_rows_used": 1149,
+  "test_sha256": "7a71ae7ca2a7a54efb1507c7d3c05ca8963c313b676ae2c3be397be016809a1c",
+  "train_label_counts": {
+    "anomaly": 60,
+    "normal": 20000
+  },
+  "train_sha256": "b86549a4e3167754cf747d7a12c704a40a6bb36560818d27e2fa4ad55fe02acb",
+  "training_rows_used": 19988,
+  "training_seconds": 2.527,
+  "true_negative": 946,
+  "true_positive": 34,
+  "unseen_test_endpoints": {
+    "anomaly": 51,
+    "normal": 466
+  }
+}

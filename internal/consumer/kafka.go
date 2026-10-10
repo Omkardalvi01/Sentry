@@ -143,6 +143,9 @@ func validateEvent(e model.TrafficEvent) error {
 	if e.RequestID == "" || !strings.HasPrefix(e.Path, "/") || e.Timestamp.IsZero() || e.StatusCode < 100 || e.StatusCode > 599 {
 		return fmt.Errorf("request_id, absolute path, timestamp, and valid status_code are required")
 	}
+	if e.ResponseTimeMS < 0 || e.ResponseSizeBytes < 0 {
+		return fmt.Errorf("response_time_ms and response_size_bytes must be non-negative")
+	}
 	switch e.Method {
 	case "GET", "HEAD", "OPTIONS", "POST", "PUT", "PATCH", "DELETE", "TRACE":
 		return nil

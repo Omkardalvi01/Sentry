@@ -9,6 +9,8 @@ COLUMNS = {
     'spec_title': "TEXT DEFAULT ''", 'spec_version': "TEXT DEFAULT ''",
     'graph_known': 'BOOLEAN', 'graph_context_status': "TEXT DEFAULT 'unknown'",
     'training_eligible': 'BOOLEAN DEFAULT 0', 'target_origin': "TEXT DEFAULT ''",
+    'response_time_ms': 'REAL', 'response_size_bytes': 'INTEGER',
+    'review_label': 'INTEGER CHECK (review_label IN (0,1) OR review_label IS NULL)',
 }
 
 def connect(path):

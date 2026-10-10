@@ -1,0 +1,54 @@
+{
+  "balanced_accuracy": 0.501332,
+  "dataset": "FUR-API",
+  "db_path": "results/fur-api-20261006T150406916421.db",
+  "excluded_test_invalid_status": 1,
+  "excluded_train_invalid_status": 12,
+  "f1": 0.012903,
+  "false_negative": 149,
+  "false_positive": 4,
+  "limitations": [
+    "No API spec or graph topology is supplied by FUR-API; graph features are zero.",
+    "FUR-API response_time, header content, and response_size fields are not model features.",
+    "The detector uses its training-only validation split to calibrate a threshold; no test labels are used for tuning."
+  ],
+  "model_version": "3193aaab-4d5e-4153-a4a8-14f549e3c9af",
+  "precision": 0.2,
+  "prediction_records": 1149,
+  "prediction_seconds": 6.629,
+  "protocol": "Train the current DetectorService on valid normal training rows marked training_eligible; exclude labeled training anomalies. Train/validation split and threshold calibration use training rows only. Predict held-out valid rows without cache.",
+  "reason_counts_by_outcome": {
+    "fn": {},
+    "fp": {
+      "Body size exceeds the validated endpoint-relative baseline": 4
+    },
+    "tn": {},
+    "tp": {
+      "Body size exceeds the validated endpoint-relative baseline": 1
+    }
+  },
+  "recall": 0.006667,
+  "sentry_revision": "94f77addfa46ef461a627b7b57c41bc62202d779",
+  "source_revision": "fe63412637b60f7273d71613d9b8d39acd286187",
+  "specificity": 0.995996,
+  "test_events_per_second": 173.32,
+  "test_label_counts": {
+    "anomaly": 150,
+    "normal": 1000
+  },
+  "test_rows_used": 1149,
+  "test_sha256": "7a71ae7ca2a7a54efb1507c7d3c05ca8963c313b676ae2c3be397be016809a1c",
+  "train_label_counts": {
+    "anomaly": 60,
+    "normal": 20000
+  },
+  "train_sha256": "b86549a4e3167754cf747d7a12c704a40a6bb36560818d27e2fa4ad55fe02acb",
+  "training_rows_used": 19988,
+  "training_seconds": 1.154,
+  "true_negative": 995,
+  "true_positive": 1,
+  "unseen_test_endpoints": {
+    "anomaly": 51,
+    "normal": 466
+  }
+}

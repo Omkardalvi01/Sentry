@@ -25,9 +25,10 @@ func (p *OpenAPI3Parser) Parse(filePath string) (*model.Spec, error) {
 		return nil, fmt.Errorf("loading OpenAPI 3.x spec: %w", err)
 	}
 
-	// Validate the spec
+	// Validate the contract structure. Public specs sometimes carry examples
+	// whose types disagree with their schemas; examples do not define routes.
 	ctx := context.Background()
-	if err := doc.Validate(ctx); err != nil {
+	if err := doc.Validate(ctx, openapi3.DisableExamplesValidation()); err != nil {
 		return nil, fmt.Errorf("validating OpenAPI 3.x spec: %w", err)
 	}
 

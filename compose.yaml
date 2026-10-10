@@ -28,7 +28,9 @@ services:
       retries: 20
   detector:
     build: {context: ., dockerfile: anomaly-detector/Dockerfile}
-    environment: {SENTRY_DB_PATH: /data/traffic.db}
+    environment:
+      SENTRY_DB_PATH: /data/traffic.db
+      SENTRY_REVIEW_TOKEN: ${SENTRY_REVIEW_TOKEN:-}
     volumes: ["traffic-data:/data"]
     ports: ["127.0.0.1:5001:5001"]
     healthcheck:

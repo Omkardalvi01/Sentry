@@ -1,0 +1,1172 @@
+{
+  "captured_at": "2026-10-06T10:03:38.297592+00:00",
+  "ingest": {
+    "elapsed_seconds": 0.1,
+    "exit_code": 0,
+    "log": "results/crapi-ingest.log"
+  },
+  "measurements": {
+    "findings": [
+      {
+        "method": "POST",
+        "path": "/community/api/v1//community/posts",
+        "severity": "CRITICAL",
+        "status_code": 301,
+        "strategy": "version_probe",
+        "title": "Old API version still accessible"
+      },
+      {
+        "method": "POST",
+        "path": "/community/api//community/posts",
+        "severity": "CRITICAL",
+        "status_code": 301,
+        "strategy": "version_probe",
+        "title": "Old API version still accessible"
+      },
+      {
+        "method": "POST",
+        "path": "/community/api/v4//community/posts",
+        "severity": "MEDIUM",
+        "status_code": 301,
+        "strategy": "version_probe",
+        "title": "Newer API version detected (possibly unstaged)"
+      },
+      {
+        "method": "GET",
+        "path": "/community/api/v1//community/posts/recent",
+        "severity": "CRITICAL",
+        "status_code": 301,
+        "strategy": "version_probe",
+        "title": "Old API version still accessible"
+      },
+      {
+        "method": "POST",
+        "path": "/community/api/v3//community/posts",
+        "severity": "MEDIUM",
+        "status_code": 301,
+        "strategy": "version_probe",
+        "title": "Newer API version detected (possibly unstaged)"
+      },
+      {
+        "method": "GET",
+        "path": "/community/api/v3//community/posts/recent",
+        "severity": "MEDIUM",
+        "status_code": 301,
+        "strategy": "version_probe",
+        "title": "Newer API version detected (possibly unstaged)"
+      },
+      {
+        "method": "GET",
+        "path": "/community/api/v4//community/posts/recent",
+        "severity": "MEDIUM",
+        "status_code": 301,
+        "strategy": "version_probe",
+        "title": "Newer API version detected (possibly unstaged)"
+      },
+      {
+        "method": "GET",
+        "path": "/community/api//community/posts/recent",
+        "severity": "CRITICAL",
+        "status_code": 301,
+        "strategy": "version_probe",
+        "title": "Old API version still accessible"
+      },
+      {
+        "method": "GET",
+        "path": "/community/api/v1//community/posts/{postId}",
+        "severity": "CRITICAL",
+        "status_code": 301,
+        "strategy": "version_probe",
+        "title": "Old API version still accessible"
+      },
+      {
+        "method": "GET",
+        "path": "/community/api/v3//community/posts/{postId}",
+        "severity": "MEDIUM",
+        "status_code": 301,
+        "strategy": "version_probe",
+        "title": "Newer API version detected (possibly unstaged)"
+      },
+      {
+        "method": "GET",
+        "path": "/community/api/v4//community/posts/{postId}",
+        "severity": "MEDIUM",
+        "status_code": 301,
+        "strategy": "version_probe",
+        "title": "Newer API version detected (possibly unstaged)"
+      },
+      {
+        "method": "GET",
+        "path": "/community/api//community/posts/{postId}",
+        "severity": "CRITICAL",
+        "status_code": 301,
+        "strategy": "version_probe",
+        "title": "Old API version still accessible"
+      },
+      {
+        "method": "POST",
+        "path": "/community/api/v1//community/posts/{postId}/comment",
+        "severity": "CRITICAL",
+        "status_code": 301,
+        "strategy": "version_probe",
+        "title": "Old API version still accessible"
+      },
+      {
+        "method": "POST",
+        "path": "/community/api/v3//community/posts/{postId}/comment",
+        "severity": "MEDIUM",
+        "status_code": 301,
+        "strategy": "version_probe",
+        "title": "Newer API version detected (possibly unstaged)"
+      },
+      {
+        "method": "POST",
+        "path": "/community/api/v4//community/posts/{postId}/comment",
+        "severity": "MEDIUM",
+        "status_code": 301,
+        "strategy": "version_probe",
+        "title": "Newer API version detected (possibly unstaged)"
+      },
+      {
+        "method": "POST",
+        "path": "/community/api//community/posts/{postId}/comment",
+        "severity": "CRITICAL",
+        "status_code": 301,
+        "strategy": "version_probe",
+        "title": "Old API version still accessible"
+      },
+      {
+        "method": "POST",
+        "path": "/community/api/v1//coupon/new-coupon",
+        "severity": "CRITICAL",
+        "status_code": 301,
+        "strategy": "version_probe",
+        "title": "Old API version still accessible"
+      },
+      {
+        "method": "POST",
+        "path": "/community/api/v3//coupon/new-coupon",
+        "severity": "MEDIUM",
+        "status_code": 301,
+        "strategy": "version_probe",
+        "title": "Newer API version detected (possibly unstaged)"
+      },
+      {
+        "method": "POST",
+        "path": "/community/api/v4//coupon/new-coupon",
+        "severity": "MEDIUM",
+        "status_code": 301,
+        "strategy": "version_probe",
+        "title": "Newer API version detected (possibly unstaged)"
+      },
+      {
+        "method": "POST",
+        "path": "/community/api//coupon/new-coupon",
+        "severity": "CRITICAL",
+        "status_code": 301,
+        "strategy": "version_probe",
+        "title": "Old API version still accessible"
+      },
+      {
+        "method": "POST",
+        "path": "/community/api/v1//coupon/validate-coupon",
+        "severity": "CRITICAL",
+        "status_code": 301,
+        "strategy": "version_probe",
+        "title": "Old API version still accessible"
+      },
+      {
+        "method": "POST",
+        "path": "/community/api/v3//coupon/validate-coupon",
+        "severity": "MEDIUM",
+        "status_code": 301,
+        "strategy": "version_probe",
+        "title": "Newer API version detected (possibly unstaged)"
+      },
+      {
+        "method": "POST",
+        "path": "/community/api/v4//coupon/validate-coupon",
+        "severity": "MEDIUM",
+        "status_code": 301,
+        "strategy": "version_probe",
+        "title": "Newer API version detected (possibly unstaged)"
+      },
+      {
+        "method": "POST",
+        "path": "/community/api//coupon/validate-coupon",
+        "severity": "CRITICAL",
+        "status_code": 301,
+        "strategy": "version_probe",
+        "title": "Old API version still accessible"
+      },
+      {
+        "method": "OPTIONS",
+        "path": "/community/api/v2/community/posts",
+        "severity": "MEDIUM",
+        "status_code": 200,
+        "strategy": "method_probe",
+        "title": "Undocumented HTTP method accepted"
+      },
+      {
+        "method": "OPTIONS",
+        "path": "/community/api/v2/community/posts/recent",
+        "severity": "MEDIUM",
+        "status_code": 200,
+        "strategy": "method_probe",
+        "title": "Undocumented HTTP method accepted"
+      },
+      {
+        "method": "OPTIONS",
+        "path": "/community/api/v2/community/posts/{postId}",
+        "severity": "MEDIUM",
+        "status_code": 200,
+        "strategy": "method_probe",
+        "title": "Undocumented HTTP method accepted"
+      },
+      {
+        "method": "OPTIONS",
+        "path": "/community/api/v2/community/posts/{postId}/comment",
+        "severity": "MEDIUM",
+        "status_code": 200,
+        "strategy": "method_probe",
+        "title": "Undocumented HTTP method accepted"
+      },
+      {
+        "method": "OPTIONS",
+        "path": "/community/api/v2/coupon/new-coupon",
+        "severity": "MEDIUM",
+        "status_code": 200,
+        "strategy": "method_probe",
+        "title": "Undocumented HTTP method accepted"
+      },
+      {
+        "method": "OPTIONS",
+        "path": "/community/api/v2/coupon/validate-coupon",
+        "severity": "MEDIUM",
+        "status_code": 200,
+        "strategy": "method_probe",
+        "title": "Undocumented HTTP method accepted"
+      },
+      {
+        "method": "OPTIONS",
+        "path": "/identity/api/auth/forget-password",
+        "severity": "MEDIUM",
+        "status_code": 200,
+        "strategy": "method_probe",
+        "title": "Undocumented HTTP method accepted"
+      },
+      {
+        "method": "OPTIONS",
+        "path": "/identity/api/auth/login",
+        "severity": "MEDIUM",
+        "status_code": 200,
+        "strategy": "method_probe",
+        "title": "Undocumented HTTP method accepted"
+      },
+      {
+        "method": "OPTIONS",
+        "path": "/identity/api/auth/signup",
+        "severity": "MEDIUM",
+        "status_code": 200,
+        "strategy": "method_probe",
+        "title": "Undocumented HTTP method accepted"
+      },
+      {
+        "method": "OPTIONS",
+        "path": "/identity/api/auth/v2.7/user/login-with-token",
+        "severity": "MEDIUM",
+        "status_code": 200,
+        "strategy": "method_probe",
+        "title": "Undocumented HTTP method accepted"
+      },
+      {
+        "method": "OPTIONS",
+        "path": "/identity/api/auth/v2/check-otp",
+        "severity": "MEDIUM",
+        "status_code": 200,
+        "strategy": "method_probe",
+        "title": "Undocumented HTTP method accepted"
+      },
+      {
+        "method": "OPTIONS",
+        "path": "/identity/api/auth/v3/check-otp",
+        "severity": "MEDIUM",
+        "status_code": 200,
+        "strategy": "method_probe",
+        "title": "Undocumented HTTP method accepted"
+      },
+      {
+        "method": "OPTIONS",
+        "path": "/identity/api/auth/v4.0/user/login-with-token",
+        "severity": "MEDIUM",
+        "status_code": 200,
+        "strategy": "method_probe",
+        "title": "Undocumented HTTP method accepted"
+      },
+      {
+        "method": "GET",
+        "path": "/identity/api/v2/admin/videos/{video_id}",
+        "severity": "MEDIUM",
+        "status_code": 401,
+        "strategy": "method_probe",
+        "title": "Undocumented HTTP method accepted"
+      },
+      {
+        "method": "POST",
+        "path": "/identity/api/v2/admin/videos/{video_id}",
+        "severity": "MEDIUM",
+        "status_code": 401,
+        "strategy": "method_probe",
+        "title": "Undocumented HTTP method accepted"
+      },
+      {
+        "method": "PUT",
+        "path": "/identity/api/v2/admin/videos/{video_id}",
+        "severity": "MEDIUM",
+        "status_code": 401,
+        "strategy": "method_probe",
+        "title": "Undocumented HTTP method accepted"
+      },
+      {
+        "method": "PATCH",
+        "path": "/identity/api/v2/admin/videos/{video_id}",
+        "severity": "MEDIUM",
+        "status_code": 401,
+        "strategy": "method_probe",
+        "title": "Undocumented HTTP method accepted"
+      },
+      {
+        "method": "HEAD",
+        "path": "/identity/api/v2/admin/videos/{video_id}",
+        "severity": "MEDIUM",
+        "status_code": 401,
+        "strategy": "method_probe",
+        "title": "Undocumented HTTP method accepted"
+      },
+      {
+        "method": "OPTIONS",
+        "path": "/identity/api/v2/admin/videos/{video_id}",
+        "severity": "MEDIUM",
+        "status_code": 401,
+        "strategy": "method_probe",
+        "title": "Undocumented HTTP method accepted"
+      },
+      {
+        "method": "GET",
+        "path": "/identity/api/v2/user/change-email",
+        "severity": "MEDIUM",
+        "status_code": 401,
+        "strategy": "method_probe",
+        "title": "Undocumented HTTP method accepted"
+      },
+      {
+        "method": "PUT",
+        "path": "/identity/api/v2/user/change-email",
+        "severity": "MEDIUM",
+        "status_code": 401,
+        "strategy": "method_probe",
+        "title": "Undocumented HTTP method accepted"
+      },
+      {
+        "method": "DELETE",
+        "path": "/identity/api/v2/user/change-email",
+        "severity": "MEDIUM",
+        "status_code": 401,
+        "strategy": "method_probe",
+        "title": "Undocumented HTTP method accepted"
+      },
+      {
+        "method": "PATCH",
+        "path": "/identity/api/v2/user/change-email",
+        "severity": "MEDIUM",
+        "status_code": 401,
+        "strategy": "method_probe",
+        "title": "Undocumented HTTP method accepted"
+      },
+      {
+        "method": "HEAD",
+        "path": "/identity/api/v2/user/change-email",
+        "severity": "MEDIUM",
+        "status_code": 401,
+        "strategy": "method_probe",
+        "title": "Undocumented HTTP method accepted"
+      },
+      {
+        "method": "OPTIONS",
+        "path": "/identity/api/v2/user/change-email",
+        "severity": "MEDIUM",
+        "status_code": 401,
+        "strategy": "method_probe",
+        "title": "Undocumented HTTP method accepted"
+      },
+      {
+        "method": "HEAD",
+        "path": "/identity/api/v2/user/dashboard",
+        "severity": "MEDIUM",
+        "status_code": 404,
+        "strategy": "method_probe",
+        "title": "Undocumented HTTP method accepted"
+      },
+      {
+        "method": "OPTIONS",
+        "path": "/identity/api/v2/user/dashboard",
+        "severity": "MEDIUM",
+        "status_code": 200,
+        "strategy": "method_probe",
+        "title": "Undocumented HTTP method accepted"
+      },
+      {
+        "method": "GET",
+        "path": "/identity/api/v2/user/pictures",
+        "severity": "MEDIUM",
+        "status_code": 401,
+        "strategy": "method_probe",
+        "title": "Undocumented HTTP method accepted"
+      },
+      {
+        "method": "PUT",
+        "path": "/identity/api/v2/user/pictures",
+        "severity": "MEDIUM",
+        "status_code": 401,
+        "strategy": "method_probe",
+        "title": "Undocumented HTTP method accepted"
+      },
+      {
+        "method": "DELETE",
+        "path": "/identity/api/v2/user/pictures",
+        "severity": "MEDIUM",
+        "status_code": 401,
+        "strategy": "method_probe",
+        "title": "Undocumented HTTP method accepted"
+      },
+      {
+        "method": "PATCH",
+        "path": "/identity/api/v2/user/pictures",
+        "severity": "MEDIUM",
+        "status_code": 401,
+        "strategy": "method_probe",
+        "title": "Undocumented HTTP method accepted"
+      },
+      {
+        "method": "HEAD",
+        "path": "/identity/api/v2/user/pictures",
+        "severity": "MEDIUM",
+        "status_code": 401,
+        "strategy": "method_probe",
+        "title": "Undocumented HTTP method accepted"
+      },
+      {
+        "method": "OPTIONS",
+        "path": "/identity/api/v2/user/pictures",
+        "severity": "MEDIUM",
+        "status_code": 401,
+        "strategy": "method_probe",
+        "title": "Undocumented HTTP method accepted"
+      },
+      {
+        "method": "GET",
+        "path": "/identity/api/v2/user/reset-password",
+        "severity": "MEDIUM",
+        "status_code": 401,
+        "strategy": "method_probe",
+        "title": "Undocumented HTTP method accepted"
+      },
+      {
+        "method": "PUT",
+        "path": "/identity/api/v2/user/reset-password",
+        "severity": "MEDIUM",
+        "status_code": 401,
+        "strategy": "method_probe",
+        "title": "Undocumented HTTP method accepted"
+      },
+      {
+        "method": "DELETE",
+        "path": "/identity/api/v2/user/reset-password",
+        "severity": "MEDIUM",
+        "status_code": 401,
+        "strategy": "method_probe",
+        "title": "Undocumented HTTP method accepted"
+      },
+      {
+        "method": "PATCH",
+        "path": "/identity/api/v2/user/reset-password",
+        "severity": "MEDIUM",
+        "status_code": 401,
+        "strategy": "method_probe",
+        "title": "Undocumented HTTP method accepted"
+      },
+      {
+        "method": "HEAD",
+        "path": "/identity/api/v2/user/reset-password",
+        "severity": "MEDIUM",
+        "status_code": 401,
+        "strategy": "method_probe",
+        "title": "Undocumented HTTP method accepted"
+      },
+      {
+        "method": "OPTIONS",
+        "path": "/identity/api/v2/user/reset-password",
+        "severity": "MEDIUM",
+        "status_code": 401,
+        "strategy": "method_probe",
+        "title": "Undocumented HTTP method accepted"
+      },
+      {
+        "method": "GET",
+        "path": "/identity/api/v2/user/verify-email-token",
+        "severity": "MEDIUM",
+        "status_code": 401,
+        "strategy": "method_probe",
+        "title": "Undocumented HTTP method accepted"
+      },
+      {
+        "method": "PUT",
+        "path": "/identity/api/v2/user/verify-email-token",
+        "severity": "MEDIUM",
+        "status_code": 401,
+        "strategy": "method_probe",
+        "title": "Undocumented HTTP method accepted"
+      },
+      {
+        "method": "DELETE",
+        "path": "/identity/api/v2/user/verify-email-token",
+        "severity": "MEDIUM",
+        "status_code": 401,
+        "strategy": "method_probe",
+        "title": "Undocumented HTTP method accepted"
+      },
+      {
+        "method": "PATCH",
+        "path": "/identity/api/v2/user/verify-email-token",
+        "severity": "MEDIUM",
+        "status_code": 401,
+        "strategy": "method_probe",
+        "title": "Undocumented HTTP method accepted"
+      },
+      {
+        "method": "HEAD",
+        "path": "/identity/api/v2/user/verify-email-token",
+        "severity": "MEDIUM",
+        "status_code": 401,
+        "strategy": "method_probe",
+        "title": "Undocumented HTTP method accepted"
+      },
+      {
+        "method": "OPTIONS",
+        "path": "/identity/api/v2/user/verify-email-token",
+        "severity": "MEDIUM",
+        "status_code": 401,
+        "strategy": "method_probe",
+        "title": "Undocumented HTTP method accepted"
+      },
+      {
+        "method": "GET",
+        "path": "/identity/api/v2/user/videos",
+        "severity": "MEDIUM",
+        "status_code": 401,
+        "strategy": "method_probe",
+        "title": "Undocumented HTTP method accepted"
+      },
+      {
+        "method": "PUT",
+        "path": "/identity/api/v2/user/videos",
+        "severity": "MEDIUM",
+        "status_code": 401,
+        "strategy": "method_probe",
+        "title": "Undocumented HTTP method accepted"
+      },
+      {
+        "method": "DELETE",
+        "path": "/identity/api/v2/user/videos",
+        "severity": "MEDIUM",
+        "status_code": 401,
+        "strategy": "method_probe",
+        "title": "Undocumented HTTP method accepted"
+      },
+      {
+        "method": "PATCH",
+        "path": "/identity/api/v2/user/videos",
+        "severity": "MEDIUM",
+        "status_code": 401,
+        "strategy": "method_probe",
+        "title": "Undocumented HTTP method accepted"
+      },
+      {
+        "method": "HEAD",
+        "path": "/identity/api/v2/user/videos",
+        "severity": "MEDIUM",
+        "status_code": 401,
+        "strategy": "method_probe",
+        "title": "Undocumented HTTP method accepted"
+      },
+      {
+        "method": "OPTIONS",
+        "path": "/identity/api/v2/user/videos",
+        "severity": "MEDIUM",
+        "status_code": 401,
+        "strategy": "method_probe",
+        "title": "Undocumented HTTP method accepted"
+      },
+      {
+        "method": "POST",
+        "path": "/identity/api/v2/user/videos/convert_video",
+        "severity": "MEDIUM",
+        "status_code": 401,
+        "strategy": "method_probe",
+        "title": "Undocumented HTTP method accepted"
+      },
+      {
+        "method": "PUT",
+        "path": "/identity/api/v2/user/videos/convert_video",
+        "severity": "MEDIUM",
+        "status_code": 401,
+        "strategy": "method_probe",
+        "title": "Undocumented HTTP method accepted"
+      },
+      {
+        "method": "DELETE",
+        "path": "/identity/api/v2/user/videos/convert_video",
+        "severity": "MEDIUM",
+        "status_code": 401,
+        "strategy": "method_probe",
+        "title": "Undocumented HTTP method accepted"
+      },
+      {
+        "method": "PATCH",
+        "path": "/identity/api/v2/user/videos/convert_video",
+        "severity": "MEDIUM",
+        "status_code": 401,
+        "strategy": "method_probe",
+        "title": "Undocumented HTTP method accepted"
+      },
+      {
+        "method": "HEAD",
+        "path": "/identity/api/v2/user/videos/convert_video",
+        "severity": "MEDIUM",
+        "status_code": 401,
+        "strategy": "method_probe",
+        "title": "Undocumented HTTP method accepted"
+      },
+      {
+        "method": "OPTIONS",
+        "path": "/identity/api/v2/user/videos/convert_video",
+        "severity": "MEDIUM",
+        "status_code": 401,
+        "strategy": "method_probe",
+        "title": "Undocumented HTTP method accepted"
+      },
+      {
+        "method": "POST",
+        "path": "/identity/api/v2/user/videos/{video_id}",
+        "severity": "MEDIUM",
+        "status_code": 401,
+        "strategy": "method_probe",
+        "title": "Undocumented HTTP method accepted"
+      },
+      {
+        "method": "PATCH",
+        "path": "/identity/api/v2/user/videos/{video_id}",
+        "severity": "MEDIUM",
+        "status_code": 401,
+        "strategy": "method_probe",
+        "title": "Undocumented HTTP method accepted"
+      },
+      {
+        "method": "HEAD",
+        "path": "/identity/api/v2/user/videos/{video_id}",
+        "severity": "MEDIUM",
+        "status_code": 401,
+        "strategy": "method_probe",
+        "title": "Undocumented HTTP method accepted"
+      },
+      {
+        "method": "OPTIONS",
+        "path": "/identity/api/v2/user/videos/{video_id}",
+        "severity": "MEDIUM",
+        "status_code": 401,
+        "strategy": "method_probe",
+        "title": "Undocumented HTTP method accepted"
+      },
+      {
+        "method": "GET",
+        "path": "/identity/api/v2/vehicle/add_vehicle",
+        "severity": "MEDIUM",
+        "status_code": 401,
+        "strategy": "method_probe",
+        "title": "Undocumented HTTP method accepted"
+      },
+      {
+        "method": "PUT",
+        "path": "/identity/api/v2/vehicle/add_vehicle",
+        "severity": "MEDIUM",
+        "status_code": 401,
+        "strategy": "method_probe",
+        "title": "Undocumented HTTP method accepted"
+      },
+      {
+        "method": "DELETE",
+        "path": "/identity/api/v2/vehicle/add_vehicle",
+        "severity": "MEDIUM",
+        "status_code": 401,
+        "strategy": "method_probe",
+        "title": "Undocumented HTTP method accepted"
+      },
+      {
+        "method": "PATCH",
+        "path": "/identity/api/v2/vehicle/add_vehicle",
+        "severity": "MEDIUM",
+        "status_code": 401,
+        "strategy": "method_probe",
+        "title": "Undocumented HTTP method accepted"
+      },
+      {
+        "method": "HEAD",
+        "path": "/identity/api/v2/vehicle/add_vehicle",
+        "severity": "MEDIUM",
+        "status_code": 401,
+        "strategy": "method_probe",
+        "title": "Undocumented HTTP method accepted"
+      },
+      {
+        "method": "OPTIONS",
+        "path": "/identity/api/v2/vehicle/add_vehicle",
+        "severity": "MEDIUM",
+        "status_code": 401,
+        "strategy": "method_probe",
+        "title": "Undocumented HTTP method accepted"
+      },
+      {
+        "method": "GET",
+        "path": "/identity/api/v2/vehicle/resend_email",
+        "severity": "MEDIUM",
+        "status_code": 401,
+        "strategy": "method_probe",
+        "title": "Undocumented HTTP method accepted"
+      },
+      {
+        "method": "PUT",
+        "path": "/identity/api/v2/vehicle/resend_email",
+        "severity": "MEDIUM",
+        "status_code": 401,
+        "strategy": "method_probe",
+        "title": "Undocumented HTTP method accepted"
+      },
+      {
+        "method": "DELETE",
+        "path": "/identity/api/v2/vehicle/resend_email",
+        "severity": "MEDIUM",
+        "status_code": 401,
+        "strategy": "method_probe",
+        "title": "Undocumented HTTP method accepted"
+      },
+      {
+        "method": "PATCH",
+        "path": "/identity/api/v2/vehicle/resend_email",
+        "severity": "MEDIUM",
+        "status_code": 401,
+        "strategy": "method_probe",
+        "title": "Undocumented HTTP method accepted"
+      },
+      {
+        "method": "HEAD",
+        "path": "/identity/api/v2/vehicle/resend_email",
+        "severity": "MEDIUM",
+        "status_code": 401,
+        "strategy": "method_probe",
+        "title": "Undocumented HTTP method accepted"
+      },
+      {
+        "method": "OPTIONS",
+        "path": "/identity/api/v2/vehicle/resend_email",
+        "severity": "MEDIUM",
+        "status_code": 401,
+        "strategy": "method_probe",
+        "title": "Undocumented HTTP method accepted"
+      },
+      {
+        "method": "POST",
+        "path": "/identity/api/v2/vehicle/vehicles",
+        "severity": "MEDIUM",
+        "status_code": 401,
+        "strategy": "method_probe",
+        "title": "Undocumented HTTP method accepted"
+      },
+      {
+        "method": "PUT",
+        "path": "/identity/api/v2/vehicle/vehicles",
+        "severity": "MEDIUM",
+        "status_code": 401,
+        "strategy": "method_probe",
+        "title": "Undocumented HTTP method accepted"
+      },
+      {
+        "method": "DELETE",
+        "path": "/identity/api/v2/vehicle/vehicles",
+        "severity": "MEDIUM",
+        "status_code": 401,
+        "strategy": "method_probe",
+        "title": "Undocumented HTTP method accepted"
+      },
+      {
+        "method": "PATCH",
+        "path": "/identity/api/v2/vehicle/vehicles",
+        "severity": "MEDIUM",
+        "status_code": 401,
+        "strategy": "method_probe",
+        "title": "Undocumented HTTP method accepted"
+      },
+      {
+        "method": "HEAD",
+        "path": "/identity/api/v2/vehicle/vehicles",
+        "severity": "MEDIUM",
+        "status_code": 401,
+        "strategy": "method_probe",
+        "title": "Undocumented HTTP method accepted"
+      },
+      {
+        "method": "OPTIONS",
+        "path": "/identity/api/v2/vehicle/vehicles",
+        "severity": "MEDIUM",
+        "status_code": 401,
+        "strategy": "method_probe",
+        "title": "Undocumented HTTP method accepted"
+      },
+      {
+        "method": "POST",
+        "path": "/identity/api/v2/vehicle/{vehicleId}/location",
+        "severity": "MEDIUM",
+        "status_code": 401,
+        "strategy": "method_probe",
+        "title": "Undocumented HTTP method accepted"
+      },
+      {
+        "method": "PUT",
+        "path": "/identity/api/v2/vehicle/{vehicleId}/location",
+        "severity": "MEDIUM",
+        "status_code": 401,
+        "strategy": "method_probe",
+        "title": "Undocumented HTTP method accepted"
+      },
+      {
+        "method": "DELETE",
+        "path": "/identity/api/v2/vehicle/{vehicleId}/location",
+        "severity": "MEDIUM",
+        "status_code": 401,
+        "strategy": "method_probe",
+        "title": "Undocumented HTTP method accepted"
+      },
+      {
+        "method": "PATCH",
+        "path": "/identity/api/v2/vehicle/{vehicleId}/location",
+        "severity": "MEDIUM",
+        "status_code": 401,
+        "strategy": "method_probe",
+        "title": "Undocumented HTTP method accepted"
+      },
+      {
+        "method": "HEAD",
+        "path": "/identity/api/v2/vehicle/{vehicleId}/location",
+        "severity": "MEDIUM",
+        "status_code": 401,
+        "strategy": "method_probe",
+        "title": "Undocumented HTTP method accepted"
+      },
+      {
+        "method": "OPTIONS",
+        "path": "/identity/api/v2/vehicle/{vehicleId}/location",
+        "severity": "MEDIUM",
+        "status_code": 401,
+        "strategy": "method_probe",
+        "title": "Undocumented HTTP method accepted"
+      },
+      {
+        "method": "HEAD",
+        "path": "/workshop/api/management/users/all",
+        "severity": "MEDIUM",
+        "status_code": 401,
+        "strategy": "method_probe",
+        "title": "Undocumented HTTP method accepted"
+      },
+      {
+        "method": "OPTIONS",
+        "path": "/workshop/api/management/users/all",
+        "severity": "MEDIUM",
+        "status_code": 200,
+        "strategy": "method_probe",
+        "title": "Undocumented HTTP method accepted"
+      },
+      {
+        "method": "HEAD",
+        "path": "/workshop/api/mechanic/",
+        "severity": "MEDIUM",
+        "status_code": 401,
+        "strategy": "method_probe",
+        "title": "Undocumented HTTP method accepted"
+      },
+      {
+        "method": "OPTIONS",
+        "path": "/workshop/api/mechanic/",
+        "severity": "MEDIUM",
+        "status_code": 200,
+        "strategy": "method_probe",
+        "title": "Undocumented HTTP method accepted"
+      },
+      {
+        "method": "HEAD",
+        "path": "/workshop/api/mechanic/mechanic_report",
+        "severity": "MEDIUM",
+        "status_code": 401,
+        "strategy": "method_probe",
+        "title": "Undocumented HTTP method accepted"
+      },
+      {
+        "method": "OPTIONS",
+        "path": "/workshop/api/mechanic/mechanic_report",
+        "severity": "MEDIUM",
+        "status_code": 200,
+        "strategy": "method_probe",
+        "title": "Undocumented HTTP method accepted"
+      },
+      {
+        "method": "HEAD",
+        "path": "/workshop/api/mechanic/receive_report",
+        "severity": "MEDIUM",
+        "status_code": 400,
+        "strategy": "method_probe",
+        "title": "Undocumented HTTP method accepted"
+      },
+      {
+        "method": "OPTIONS",
+        "path": "/workshop/api/mechanic/receive_report",
+        "severity": "MEDIUM",
+        "status_code": 200,
+        "strategy": "method_probe",
+        "title": "Undocumented HTTP method accepted"
+      },
+      {
+        "method": "HEAD",
+        "path": "/workshop/api/mechanic/service_requests",
+        "severity": "MEDIUM",
+        "status_code": 401,
+        "strategy": "method_probe",
+        "title": "Undocumented HTTP method accepted"
+      },
+      {
+        "method": "OPTIONS",
+        "path": "/workshop/api/mechanic/service_requests",
+        "severity": "MEDIUM",
+        "status_code": 200,
+        "strategy": "method_probe",
+        "title": "Undocumented HTTP method accepted"
+      },
+      {
+        "method": "OPTIONS",
+        "path": "/workshop/api/mechanic/signup",
+        "severity": "MEDIUM",
+        "status_code": 200,
+        "strategy": "method_probe",
+        "title": "Undocumented HTTP method accepted"
+      },
+      {
+        "method": "OPTIONS",
+        "path": "/workshop/api/merchant/contact_mechanic",
+        "severity": "MEDIUM",
+        "status_code": 200,
+        "strategy": "method_probe",
+        "title": "Undocumented HTTP method accepted"
+      },
+      {
+        "method": "OPTIONS",
+        "path": "/workshop/api/shop/apply_coupon",
+        "severity": "MEDIUM",
+        "status_code": 200,
+        "strategy": "method_probe",
+        "title": "Undocumented HTTP method accepted"
+      },
+      {
+        "method": "PUT",
+        "path": "/workshop/api/shop/orders",
+        "severity": "MEDIUM",
+        "status_code": 401,
+        "strategy": "method_probe",
+        "title": "Undocumented HTTP method accepted"
+      },
+      {
+        "method": "OPTIONS",
+        "path": "/workshop/api/shop/orders",
+        "severity": "MEDIUM",
+        "status_code": 200,
+        "strategy": "method_probe",
+        "title": "Undocumented HTTP method accepted"
+      },
+      {
+        "method": "HEAD",
+        "path": "/workshop/api/shop/orders/all",
+        "severity": "MEDIUM",
+        "status_code": 401,
+        "strategy": "method_probe",
+        "title": "Undocumented HTTP method accepted"
+      },
+      {
+        "method": "OPTIONS",
+        "path": "/workshop/api/shop/orders/all",
+        "severity": "MEDIUM",
+        "status_code": 200,
+        "strategy": "method_probe",
+        "title": "Undocumented HTTP method accepted"
+      },
+      {
+        "method": "OPTIONS",
+        "path": "/workshop/api/shop/orders/return_order",
+        "severity": "MEDIUM",
+        "status_code": 200,
+        "strategy": "method_probe",
+        "title": "Undocumented HTTP method accepted"
+      },
+      {
+        "method": "POST",
+        "path": "/workshop/api/shop/orders/{order_id}",
+        "severity": "MEDIUM",
+        "status_code": 401,
+        "strategy": "method_probe",
+        "title": "Undocumented HTTP method accepted"
+      },
+      {
+        "method": "OPTIONS",
+        "path": "/workshop/api/shop/orders/{order_id}",
+        "severity": "MEDIUM",
+        "status_code": 200,
+        "strategy": "method_probe",
+        "title": "Undocumented HTTP method accepted"
+      },
+      {
+        "method": "HEAD",
+        "path": "/workshop/api/shop/products",
+        "severity": "MEDIUM",
+        "status_code": 401,
+        "strategy": "method_probe",
+        "title": "Undocumented HTTP method accepted"
+      },
+      {
+        "method": "OPTIONS",
+        "path": "/workshop/api/shop/products",
+        "severity": "MEDIUM",
+        "status_code": 200,
+        "strategy": "method_probe",
+        "title": "Undocumented HTTP method accepted"
+      },
+      {
+        "method": "HEAD",
+        "path": "/workshop/api/shop/return_qr_code",
+        "severity": "MEDIUM",
+        "status_code": 200,
+        "strategy": "method_probe",
+        "title": "Undocumented HTTP method accepted"
+      },
+      {
+        "method": "OPTIONS",
+        "path": "/workshop/api/shop/return_qr_code",
+        "severity": "MEDIUM",
+        "status_code": 200,
+        "strategy": "method_probe",
+        "title": "Undocumented HTTP method accepted"
+      },
+      {
+        "method": "HEAD",
+        "path": "/workshop/api/shop/orders/{order_id}",
+        "severity": "MEDIUM",
+        "status_code": 200,
+        "strategy": "method_probe",
+        "title": "Undocumented HTTP method accepted"
+      },
+      {
+        "method": "GET",
+        "path": "/health",
+        "severity": "MEDIUM",
+        "status_code": 200,
+        "strategy": "shadow_path",
+        "title": "Shadow/undocumented endpoint found"
+      },
+      {
+        "method": "GET",
+        "path": "/healthz",
+        "severity": "MEDIUM",
+        "status_code": 200,
+        "strategy": "shadow_path",
+        "title": "Shadow/undocumented endpoint found"
+      },
+      {
+        "method": "GET",
+        "path": "/health/live",
+        "severity": "MEDIUM",
+        "status_code": 200,
+        "strategy": "shadow_path",
+        "title": "Shadow/undocumented endpoint found"
+      },
+      {
+        "method": "GET",
+        "path": "/health/ready",
+        "severity": "MEDIUM",
+        "status_code": 200,
+        "strategy": "shadow_path",
+        "title": "Shadow/undocumented endpoint found"
+      },
+      {
+        "method": "GET",
+        "path": "/.env",
+        "severity": "CRITICAL",
+        "status_code": 200,
+        "strategy": "shadow_path",
+        "title": "Shadow/undocumented endpoint found"
+      },
+      {
+        "method": "GET",
+        "path": "/robots.txt",
+        "severity": "LOW",
+        "status_code": 200,
+        "strategy": "shadow_path",
+        "title": "Shadow/undocumented endpoint found"
+      }
+    ],
+    "findings_by_severity": {
+      "CRITICAL": 13,
+      "LOW": 1,
+      "MEDIUM": 126
+    },
+    "findings_by_strategy": {
+      "method_probe": 110,
+      "shadow_path": 6,
+      "version_probe": 24
+    },
+    "scans": [
+      {
+        "completed_at": "2026-10-06T10:04:50.831433867Z",
+        "findings_count": 140,
+        "id": "e47f4243-2a6e-4e47-a8e3-86c00d471eb4",
+        "probes_sent": 367,
+        "started_at": "2026-10-06T10:03:38.415157111Z",
+        "status": "completed"
+      }
+    ],
+    "spec_operations": 44,
+    "spec_snapshots": 1,
+    "traffic_events": 0
+  },
+  "name": "crapi",
+  "parameters": {
+    "rps": 5,
+    "strategies": "deprecated_alive,version_probe,method_probe,shadow_path,auth_bypass",
+    "workers": 3
+  },
+  "scan": {
+    "elapsed_seconds": 72.511,
+    "exit_code": 0,
+    "log": "results/crapi-scan.log"
+  },
+  "source_revision": "b5fc307f3e5f875809b095b771108ef342a33724",
+  "spec_path": "evaluation/upstream/crAPI/openapi-spec/crapi-openapi-spec.json",
+  "spec_sha256": "9d57e0e76348a9a6bdff2c841ce791bb9de604a316b724074a998e3c484a4ace",
+  "status": "completed",
+  "target": "http://127.0.0.1:8888",
+  "target_http_status": 200
+}

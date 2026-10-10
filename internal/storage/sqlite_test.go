@@ -22,7 +22,10 @@ func TestMigrateAndPersistence(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	e := model.TrafficEvent{RequestID: "one", Method: "GET", Path: "/users/1", Timestamp: time.Now().UTC()}
+	e := model.TrafficEvent{RequestID: "one", Method: "GET", Path: "/users/1", QueryParams: "page=2",
+		RequestHeaders:  map[string]string{"Content-Type": "application/json"},
+		ResponseHeaders: map[string]string{"Content-Length": "42"}, ResponseTimeMS: 12.5,
+		ResponseSizeBytes: 42, Timestamp: time.Now().UTC()}
 	if err = s.SavePrediction(context.Background(), e, "pending", json.RawMessage(`{"error":"offline"}`)); err != nil {
 		t.Fatal(err)
 	}
@@ -40,8 +43,15 @@ func TestMigrateAndPersistence(t *testing.T) {
 	if err != nil || len(pending) != 1 {
 		t.Fatal(err, len(pending))
 	}
+	if pending[0].QueryParams != e.QueryParams || pending[0].RequestHeaders["Content-Type"] != "application/json" ||
+		pending[0].ResponseTimeMS != e.ResponseTimeMS || pending[0].ResponseSizeBytes != e.ResponseSizeBytes {
+		t.Fatalf("pending event lost detector features: %+v", pending[0])
+	}
 	if err = s.SavePrediction(context.Background(), e, "evaluated", json.RawMessage(`{"is_anomaly":true}`)); err != nil {
 		t.Fatal(err)
+	}
+	if _, err = s.db.Exec(`UPDATE api_traffic SET review_label=1 WHERE request_id=?`, e.RequestID); err != nil {
+		t.Fatal("review-label migration missing:", err)
 	}
 	rows, err := s.Traffic(context.Background(), 100, 0, true)
 	if err != nil || len(rows) != 1 {

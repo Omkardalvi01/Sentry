@@ -69,9 +69,13 @@ Every event is evaluated. Redis only caches inventory snapshots for 60 seconds; 
 
 The consumer stores traffic and prediction outcomes atomically before committing Kafka offsets. Detector outages persist `pending` records, which are retried after recovery and across consumer restarts. Invalid events are rejected durably with their Kafka source identity. Duplicate request IDs do not duplicate stored traffic.
 
-The Python detector combines endpoint-relative robust body-size checks and Isolation Forest, with separate inventory signals. Model scores are not probabilities. Time features are enabled only when training history covers at least a day.
+The Python detector combines endpoint-relative body-size checks and Isolation Forest. Its features include HTTP method, route and query shape, decoded traversal/injection indicators, response status and body size, optional response latency and wire size, selected request-header presence, and graph metadata. It profiles numeric path IDs as one endpoint when no OpenAPI template is available. Header values are not used as features. Model scores are not probabilities. Time-of-day features are enabled only when training history covers at least a day.
 
-Retraining uses explicitly designated `training_eligible` baseline events, ordered chronologically. The first 80% train the model; the final 20% calibrate thresholds. At least 32 training and 16 validation events are required. Evaluated anomalies and pending predictions are excluded. Failed retraining retains the old model. Model artifacts remain local trusted files because scikit-learn persistence uses pickle.
+Retraining orders eligible traffic chronologically, trains on the first 80%, and calibrates a default 5% false-positive target on the final 20%. It uses Isolation Forest until at least 20 reviewed anomalies are available in the training slice, then trains an Extra Trees classifier from reviewed anomalies and normal baseline traffic. The final validation slice is normal-only for threshold calibration. Set `target_fpr` in the retrain request to choose another value above 0 through 0.25. At least 32 normal training and 16 normal validation events are required. Pending and unreviewed predicted anomalies are excluded; explicit analyst labels override predictions. Failed retraining retains the old model. Model artifacts remain local trusted files because scikit-learn persistence uses pickle.
+
+To label traffic, configure `SENTRY_REVIEW_TOKEN` and call `PUT /traffic/{request_id}/review` with `X-Review-Token` and `{"label":"normal"}` or `{"label":"anomaly"}`. Then call `POST /models/retrain`. The review endpoint is disabled until a token is configured.
+
+Traffic events may include `response_time_ms` and `response_size_bytes`; older producers can omit them. Sentry persists them for retraining and restores them when retrying pending predictions.
 
 ```sh
 # Explicit synthetic normal baseline, for model lifecycle demonstrations only.
@@ -100,6 +104,10 @@ This seeded database is clearly synthetic and must not be presented as real coll
 | Python | `POST /models/{id}/activate` | Activate an existing compatible model |
 
 The dashboard uses persisted records exclusively. It does not generate simulated findings or silently replace failed backend requests with a demo. Kafka connectivity is not directly measured by the dashboard; it reports stored observations rather than inventing a connected state.
+
+## External dataset evaluation
+
+The separate [evaluation workspace](evaluation/README.md) contains reproducible API scanning and labeled traffic evaluation scripts, pinned dataset revisions, and result summaries. The [supervisor brief](evaluation/SUPERVISOR_BRIEF.md) summarizes API-only, graph-only, and combined results. The current [zombie/shadow graph inventory result](evaluation/results/zombie-shadow-graph.json), [Isolation Forest train/test result](evaluation/results/isolation-forest-fur-api.json), [reviewed-label classifier result](evaluation/results/fur-api-reviewed-examples.json), [merged detector replay](evaluation/results/fur-api-enhanced.json), and [model feature comparison](evaluation/results/detector-feature-comparison.json) are linked directly. Reviewed traffic can now train a label-aware model: configure `SENTRY_REVIEW_TOKEN`, label requests through the protected review endpoint, then retrain. The service keeps Isolation Forest until at least 20 reviewed anomalies are available. The older crAPI, Nicefish, and Train Ticket reports are from the pre-PR scanner; `evaluation/run_api.py` now targets this architecture's `scan-spec` workflow.
 
 ## Research and verification
 

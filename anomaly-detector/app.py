@@ -1,11 +1,12 @@
 import datetime as dt
 import logging
 import os
+import secrets
 from contextlib import asynccontextmanager
-from typing import Any
+from typing import Any, Literal
 
 from apscheduler.schedulers.background import BackgroundScheduler
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, Header, HTTPException
 from pydantic import BaseModel, Field, field_validator
 from detector import DetectorService
 
@@ -35,6 +36,8 @@ class TrafficEvent(BaseModel):
     path: str = Field(pattern=r'^/')
     timestamp: dt.datetime
     status_code: int = Field(ge=100, le=599)
+    response_time_ms: float | None = Field(default=None, ge=0)
+    response_size_bytes: int | None = Field(default=None, ge=0)
     request_body: str | None = ''
     response_body: str | None = ''
     query_params: str | None = ''
@@ -59,6 +62,10 @@ class TrafficEvent(BaseModel):
 class TrainingWindow(BaseModel):
     start: str | None = None
     end: str | None = None
+    target_fpr: float = Field(default=0.05, gt=0, le=0.25)
+
+class EventReview(BaseModel):
+    label: Literal['normal', 'anomaly']
 
 @app.post('/predict')
 def predict(event: TrafficEvent):
@@ -68,10 +75,26 @@ def predict(event: TrafficEvent):
 def models():
     return {'models': detector_service.registry.list_models()}
 
+@app.put('/traffic/{request_id}/review')
+def review_traffic(request_id: str, review: EventReview,
+                   review_token: str | None = Header(default=None, alias='X-Review-Token')):
+    configured_token = os.environ.get('SENTRY_REVIEW_TOKEN')
+    if not configured_token:
+        raise HTTPException(status_code=503, detail='Reviewed labeling is not configured')
+    if not review_token or not secrets.compare_digest(review_token, configured_token):
+        raise HTTPException(status_code=401, detail='Invalid review token')
+    try:
+        label = 1 if review.label == 'anomaly' else 0
+        detector_service.review_event(request_id, label)
+        return {'request_id': request_id, 'label': review.label, 'retrain_required': True}
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
 @app.post('/models/retrain')
 def retrain(window: TrainingWindow):
     try:
-        return {'status': 'activated', 'model_version': detector_service.train_new_model(window.start, window.end)}
+        return {'status': 'activated', 'model_version': detector_service.train_new_model(
+            window.start, window.end, target_fpr=window.target_fpr)}
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
@@ -86,6 +109,7 @@ def activate(version_id: str):
 def health():
     model = detector_service.active_model
     return {'status': 'healthy' if model else 'rules_only', 'active_model_id': model.version_id if model else None,
+            'model_kind': model.metadata.get('model_kind', 'isolation_forest') if model else 'rules_only',
             'tracked_endpoints': len(model.known_endpoints) if model else 0,
             'last_training_error': detector_service.last_training_error,
             'prediction_cache': 'disabled; each event is evaluated'}

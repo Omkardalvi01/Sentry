@@ -1,0 +1,98 @@
+{
+  "captured_at": "2026-10-06T10:16:41.987363+00:00",
+  "ingest": {
+    "elapsed_seconds": 0.106,
+    "exit_code": 0,
+    "log": "results/crapi-filtered-ingest.log"
+  },
+  "measurements": {
+    "findings": [
+      {
+        "method": "GET",
+        "path": "/health",
+        "severity": "MEDIUM",
+        "status_code": 200,
+        "strategy": "shadow_path",
+        "title": "Shadow/undocumented endpoint found"
+      },
+      {
+        "method": "GET",
+        "path": "/healthz",
+        "severity": "MEDIUM",
+        "status_code": 200,
+        "strategy": "shadow_path",
+        "title": "Shadow/undocumented endpoint found"
+      },
+      {
+        "method": "GET",
+        "path": "/health/live",
+        "severity": "MEDIUM",
+        "status_code": 200,
+        "strategy": "shadow_path",
+        "title": "Shadow/undocumented endpoint found"
+      },
+      {
+        "method": "GET",
+        "path": "/health/ready",
+        "severity": "MEDIUM",
+        "status_code": 200,
+        "strategy": "shadow_path",
+        "title": "Shadow/undocumented endpoint found"
+      },
+      {
+        "method": "GET",
+        "path": "/.env",
+        "severity": "CRITICAL",
+        "status_code": 200,
+        "strategy": "shadow_path",
+        "title": "Shadow/undocumented endpoint found"
+      },
+      {
+        "method": "GET",
+        "path": "/robots.txt",
+        "severity": "LOW",
+        "status_code": 200,
+        "strategy": "shadow_path",
+        "title": "Shadow/undocumented endpoint found"
+      }
+    ],
+    "findings_by_severity": {
+      "CRITICAL": 1,
+      "LOW": 1,
+      "MEDIUM": 4
+    },
+    "findings_by_strategy": {
+      "shadow_path": 6
+    },
+    "scans": [
+      {
+        "completed_at": "2026-10-06T10:17:38.530088612Z",
+        "findings_count": 6,
+        "id": "7b7df803-b605-4444-98c1-d6b615452e81",
+        "probes_sent": 287,
+        "started_at": "2026-10-06T10:16:42.115941293Z",
+        "status": "completed"
+      }
+    ],
+    "spec_operations": 44,
+    "spec_snapshots": 1,
+    "traffic_events": 0
+  },
+  "name": "crapi-filtered",
+  "parameters": {
+    "rps": 5,
+    "strategies": "deprecated_alive,version_probe,method_probe,shadow_path,auth_bypass",
+    "workers": 3
+  },
+  "scan": {
+    "elapsed_seconds": 56.456,
+    "exit_code": 0,
+    "log": "results/crapi-filtered-scan.log"
+  },
+  "source_revision": "b5fc307f3e5f875809b095b771108ef342a33724",
+  "spec_path": "evaluation/upstream/crAPI/openapi-spec/crapi-openapi-spec.json",
+  "spec_sha256": "9d57e0e76348a9a6bdff2c841ce791bb9de604a316b724074a998e3c484a4ace",
+  "status": "completed",
+  "target": "http://127.0.0.1:8888",
+  "target_http_status": 200
+}

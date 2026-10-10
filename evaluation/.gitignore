@@ -1,0 +1,7 @@
+upstream/
+bin/
+results/*.db
+results/*.db-*
+results/*.log
+results/graph-inventory-raw/
+__pycache__/

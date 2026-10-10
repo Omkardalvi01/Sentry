@@ -1,0 +1,21 @@
+{
+  "captured_at": "2026-10-06T10:51:27.346219+00:00",
+  "ingest": {
+    "elapsed_seconds": 0.011,
+    "exit_code": 1,
+    "log": "results/train-ticket-station-ingest.log"
+  },
+  "measurements": {},
+  "name": "train-ticket-station",
+  "parameters": {
+    "rps": 5,
+    "strategies": "deprecated_alive,version_probe,method_probe,shadow_path,auth_bypass",
+    "workers": 3
+  },
+  "source_revision": "313886e99befb94be6cd45f085c98e0019f59829",
+  "spec_path": "evaluation/results/station-swagger.json",
+  "spec_sha256": "2bf5f1a6ff55df4bf420844701df14a13990c341cad4724d4b62c59cc528ef9c",
+  "status": "ingest_failed",
+  "target": "http://127.0.0.1:12345",
+  "target_http_status": 403
+}

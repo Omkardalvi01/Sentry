@@ -33,9 +33,12 @@ def specification(app, port=0):
 
 # Truth describes actual inventory/lifecycle discrepancies, not exploitability.
 def truth(app):
-    positive={('GET','/v1/items/{id}'),('GET','/v1/protected'),('GET','/v1/public'),
-              ('GET','/v1/profile'),('GET','/private/export'),('GET','/debug')}
+    zombie={('GET','/v1/items/{id}'),('GET','/v1/protected'),('GET','/v1/public'),('GET','/v1/profile')}
+    shadow={('GET','/private/export'),('GET','/debug')}
+    positive=zombie|shadow
     return {'app':app,'positive_endpoints':[list(key) for key in sorted(positive)],
+            'zombie_endpoints':[list(key) for key in sorted(zombie)],
+            'shadow_endpoints':[list(key) for key in sorted(shadow)],
             'negative_endpoints':[['GET',p] for p in ['/v2/items/{id}','/v2/profile','/v2/large','/v2/new','/v1/retired','/v1/redirect','/v1/waf','/v1/mismatch','/v2/error','/nonsense']],
             'authentication_exposures':[['GET','/v1/protected']],
             'labels_definition':'Actionable inventory/lifecycle discrepancy; authentication exposure measured separately'}
