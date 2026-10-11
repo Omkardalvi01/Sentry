@@ -11,14 +11,34 @@ jobs:
       - uses: actions/setup-python@v5
         with: {python-version: '3.11'}
       - run: pip install --require-hashes -r research/requirements.lock
+      - run: |
+          pip install torch==2.8.0 --index-url https://download.pytorch.org/whl/cpu
+          pip install -r anomaly-detector/requirements-jevlet.txt
       - run: python -m pytest -q tests
   integration:
     runs-on: ubuntu-latest
+    env:
+      SENTRY_JEVLET_REPO: ${{ github.workspace }}/.local-data/jevlet-ci-source
+      SENTRY_JEVLET_CHECKPOINT: ${{ github.workspace }}/.local-data/jevlet-ci-checkpoint
+      SENTRY_JEVLET_DEVICE: cpu
+      SENTRY_PYTHON_EXECUTABLE: ${{ github.workspace }}/.venv/bin/python
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: Indra55/jevlet
+          ref: 897f4e1d237cb597ef6e831c41e5e6c123b4a0bb
+          path: .local-data/jevlet-ci-source
       - uses: actions/setup-go@v5
         with: {go-version-file: go.mod}
       - uses: astral-sh/setup-uv@v6
+      - name: Prepare untrained Jevlet pipeline fixture
+        run: |
+          uv venv --python 3.11 .venv
+          uv pip install --python .venv/bin/python --require-hashes -r research/requirements.lock
+          uv pip install --python .venv/bin/python torch==2.8.0 --index-url https://download.pytorch.org/whl/cpu
+          uv pip install --python .venv/bin/python -r anomaly-detector/requirements-jevlet.txt
+          .venv/bin/python research/prepare_jevlet_ci.py --repo "$SENTRY_JEVLET_REPO" --output "$SENTRY_JEVLET_CHECKPOINT"
       - run: ./scripts/integration.sh
       - uses: actions/upload-artifact@v4
         if: always()
