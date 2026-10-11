@@ -33,7 +33,7 @@ type KafkaConsumer struct {
 func NewKafkaConsumer(brokers []string, topic, group string, store *storage.TrafficStore, g *graph.Client) *KafkaConsumer {
 	api := os.Getenv("SENTRY_PYTHON_API")
 	if api == "" {
-		api = "http://127.0.0.1:5001/predict"
+		api = "http://127.0.0.1:5001/jevlet/predict"
 	}
 	var cache *redis.Client
 	if raw := os.Getenv("SENTRY_REDIS_URL"); raw != "" {

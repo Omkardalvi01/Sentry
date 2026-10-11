@@ -31,7 +31,17 @@ services:
     environment:
       SENTRY_DB_PATH: /data/traffic.db
       SENTRY_REVIEW_TOKEN: ${SENTRY_REVIEW_TOKEN:-}
-    volumes: ["traffic-data:/data"]
+      SENTRY_JEVLET_REPO: /app/jevlet
+      SENTRY_JEVLET_CHECKPOINT: /models
+      SENTRY_JEVLET_MODEL_DIR: /data/jevlet-models
+      SENTRY_JEVLET_DEVICE: cpu
+      USE_TF: "0"
+      HF_HUB_OFFLINE: "1"
+      TRANSFORMERS_OFFLINE: "1"
+    volumes:
+      - traffic-data:/data
+      - ${SENTRY_JEVLET_REPO:?Configure the local Jevlet source directory}:/app/jevlet:ro
+      - ${SENTRY_JEVLET_CHECKPOINT:?Configure the trained Jevlet checkpoint}:/models:ro
     ports: ["127.0.0.1:5001:5001"]
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5001/health')"]
@@ -70,7 +80,7 @@ services:
   consumer:
     build: .
     command: ["consume-traffic", "--kafka-brokers", "kafka:9092", "--sqlite-db", "/data/traffic.db"]
-    environment: {SENTRY_MEMGRAPH_URI: "bolt://memgraph:7687", SENTRY_PYTHON_API: "http://detector:5001/predict", SENTRY_REDIS_URL: "redis://redis:6379"}
+    environment: {SENTRY_MEMGRAPH_URI: "bolt://memgraph:7687", SENTRY_PYTHON_API: "http://detector:5001/jevlet/predict", SENTRY_REDIS_URL: "redis://redis:6379"}
     volumes: ["traffic-data:/data"]
     depends_on: {memgraph: {condition: service_healthy}, kafka: {condition: service_healthy}, detector: {condition: service_healthy}}
 volumes:

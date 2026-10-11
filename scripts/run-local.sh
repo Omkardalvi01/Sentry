@@ -2,20 +2,27 @@
 # Full local fixture demo: native app processes plus Docker dependencies.
 set -eu
 cd "$(dirname "$0")/.."
+python="${SENTRY_PYTHON_EXECUTABLE:-.venv/bin/python}"
 if [ "${1:-}" = --stop ]; then
-    .venv/bin/python research/demo.py --stop
+    "$python" research/demo.py --stop
     docker compose -f compose.local.yaml down
     exit 0
 fi
-if [ -x .venv/bin/python ] && .venv/bin/python research/demo.py --running; then
+if [ -x "$python" ] && "$python" research/demo.py --running; then
     printf '%s\n' 'Sentry is already running: http://127.0.0.1:8088'
     exit 0
 fi
-if [ ! -x bin/sentry ]; then mkdir -p bin; go build -o bin/sentry ./cmd/sentry; fi
-if [ ! -x .venv/bin/python ]; then
+mkdir -p bin
+go build -o bin/sentry ./cmd/sentry
+if [ ! -x "$python" ]; then
+    if [ -n "${SENTRY_PYTHON_EXECUTABLE:-}" ]; then printf '%s\n' 'Configured Python executable is missing'; exit 1; fi
     uv venv --python 3.11 .venv
-    uv pip install --python .venv/bin/python --require-hashes -r research/requirements.lock
 fi
+if [ -z "${SENTRY_PYTHON_EXECUTABLE:-}" ]; then
+    uv pip install --python "$python" --require-hashes -r research/requirements.lock
+    uv pip install --python "$python" -r anomaly-detector/requirements-jevlet.txt
+fi
+"$python" research/check_jevlet_runtime.py
 mkdir -p .local-data/memgraph .local-data/graph-logs .local-data/kafka .local-data/app/logs
 chmod 777 .local-data/memgraph .local-data/graph-logs .local-data/kafka
 export SENTRY_LOCAL_UID="$(id -u)" SENTRY_LOCAL_GID="$(id -g)"
@@ -32,4 +39,4 @@ if [ -z "${SENTRY_LOCAL_REDIS_IMAGE:-}" ]; then
 fi
 trap 'docker compose -f compose.local.yaml down' EXIT
 COMPOSE_PROGRESS=plain docker compose -f compose.local.yaml up -d --wait --wait-timeout 90
-.venv/bin/python research/demo.py
+"$python" research/demo.py

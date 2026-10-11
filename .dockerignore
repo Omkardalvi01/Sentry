@@ -7,3 +7,6 @@ research/results
 research/generated
 __pycache__
 .pytest_cache
+.local-data
+evaluation/datasets
+output

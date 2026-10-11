@@ -16,9 +16,8 @@ ROOT = Path(__file__).resolve().parents[1]
 DATA = ROOT / '.local-data/app'
 PID_FILE = DATA / 'supervisor.json'
 sys.path.insert(0, str(ROOT / 'anomaly-detector'))
-from detector import DetectorService, fit_model
-from testbed import APPS, specification
-from benchmark import collect, request
+from testbed import APPS
+from benchmark import request
 
 
 def get_json(url, data=None):
@@ -114,7 +113,6 @@ def run():
         print('Waiting for Memgraph, Kafka, and Redis…', flush=True)
         for port in [7688, 19092, 6388]:
             wait_for(lambda port=port: port_open(port), f'Service on {port}')
-        baseline, validation = [], []
         for app, port in zip(APPS, [9001, 9002, 9003]):
             launch(app, [str(ROOT / '.venv/bin/python'), 'research/testbed.py', '--app', app,
                          '--port', str(port), '--output', str(DATA / 'specs')])
@@ -122,20 +120,13 @@ def run():
             wait_for(lambda base=base: get_json(base + '/__health'), app)
             spec_file = DATA / 'specs' / f'{app}.json'
             checked([binary, 'ingest', '--file', str(spec_file), '--memgraph-uri', 'bolt://127.0.0.1:7688'])
-            events, _ = collect(app, base, specification(app, port), 42)
-            baseline.extend(events[:160]); validation.extend(events[160:200])
-        service = DetectorService(str(db))
-        if service.active_model is None:
-            model = fit_model(baseline, validation)
-            model.metadata['baseline_source'] = 'normal HTTP requests against local demo fixtures'
-            service.registry.save_model(model)
         launch('detector', [str(ROOT / '.venv/bin/python'), '-m', 'uvicorn', 'app:app',
                            '--app-dir', 'anomaly-detector', '--port', '5001'], {'SENTRY_DB_PATH': str(db)})
         wait_for(lambda: get_json('http://127.0.0.1:5001/health'), 'Detector')
         launch('consumer', [binary, 'consume-traffic', '--kafka-brokers', '127.0.0.1:19092',
                             '--kafka-topic', topic, '--kafka-group', 'sentry-local', '--sqlite-db', str(db),
                             '--memgraph-uri', 'bolt://127.0.0.1:7688'],
-               {'SENTRY_PYTHON_API': 'http://127.0.0.1:5001/predict', 'SENTRY_REDIS_URL': 'redis://127.0.0.1:6388'})
+               {'SENTRY_PYTHON_API': 'http://127.0.0.1:5001/jevlet/predict', 'SENTRY_REDIS_URL': 'redis://127.0.0.1:6388'})
         launch('dashboard', [binary, 'dashboard', '--port', '8088', '--sqlite-db', str(db),
                              '--memgraph-uri', 'bolt://127.0.0.1:7688'],
                {'SENTRY_DETECTOR_URL': 'http://127.0.0.1:5001'})

@@ -1,14 +1,12 @@
 import datetime as dt
-import logging
 import os
 import secrets
 from contextlib import asynccontextmanager
 from typing import Any, Literal
 
-from apscheduler.schedulers.background import BackgroundScheduler
 from fastapi import FastAPI, Header, HTTPException
 from pydantic import BaseModel, Field, field_validator
-from detector import DetectorService
+from jevlet_service import JevletService
 
 DB_PATH = os.environ.get('SENTRY_DB_PATH', '../traffic.db')
 detector_service = None
@@ -16,19 +14,10 @@ detector_service = None
 @asynccontextmanager
 async def lifespan(app):
     global detector_service
-    detector_service = DetectorService(DB_PATH)
-    scheduler = BackgroundScheduler()
-    def retrain():
-        try:
-            detector_service.train_new_model()
-        except Exception as exc:
-            logging.warning('Scheduled retraining retained previous model: %s', exc)
-    scheduler.add_job(retrain, 'interval', hours=24, max_instances=1)
-    scheduler.start()
+    detector_service = JevletService(DB_PATH)
     yield
-    scheduler.shutdown()
 
-app = FastAPI(title='Sentry inventory and behavioral detector', lifespan=lifespan)
+app = FastAPI(title='Sentry Jevlet inventory and behavioral detector', lifespan=lifespan)
 
 class TrafficEvent(BaseModel):
     request_id: str = Field(min_length=1)
@@ -67,13 +56,23 @@ class TrainingWindow(BaseModel):
 class EventReview(BaseModel):
     label: Literal['normal', 'anomaly']
 
-@app.post('/predict')
+@app.post('/jevlet/predict')
 def predict(event: TrafficEvent):
     return detector_service.predict(event.model_dump(mode="json"))
 
-@app.get('/models')
+@app.get('/jevlet/models')
 def models():
-    return {'models': detector_service.registry.list_models()}
+    return {'models': detector_service.list_models()}
+
+class ServiceTelemetry(BaseModel):
+    telemetry_text: str = Field(min_length=1, max_length=32768)
+
+@app.post('/jevlet/service-failure')
+def service_failure(window: ServiceTelemetry):
+    try:
+        return detector_service.predict_service_failure(window.telemetry_text)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 @app.put('/traffic/{request_id}/review')
 def review_traffic(request_id: str, review: EventReview,
@@ -90,7 +89,7 @@ def review_traffic(request_id: str, review: EventReview,
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
-@app.post('/models/retrain')
+@app.post('/jevlet/models/retrain')
 def retrain(window: TrainingWindow):
     try:
         return {'status': 'activated', 'model_version': detector_service.train_new_model(
@@ -98,18 +97,13 @@ def retrain(window: TrainingWindow):
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
-@app.post('/models/{version_id}/activate')
+@app.post('/jevlet/models/{version_id}/activate')
 def activate(version_id: str):
     try:
-        return {'model_version': detector_service.rollback(version_id)}
+        return {'model_version': detector_service.activate(version_id)}
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 @app.get('/health')
 def health():
-    model = detector_service.active_model
-    return {'status': 'healthy' if model else 'rules_only', 'active_model_id': model.version_id if model else None,
-            'model_kind': model.metadata.get('model_kind', 'isolation_forest') if model else 'rules_only',
-            'tracked_endpoints': len(model.known_endpoints) if model else 0,
-            'last_training_error': detector_service.last_training_error,
-            'prediction_cache': 'disabled; each event is evaluated'}
+    return detector_service.health()

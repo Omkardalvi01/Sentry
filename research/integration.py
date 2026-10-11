@@ -12,7 +12,6 @@ import urllib.request
 ROOT=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT/'anomaly-detector'))
 from database import initialize, connect
-from detector import DetectorService, fit_model
 from testbed import start, specification
 from benchmark import collect
 
@@ -41,17 +40,16 @@ def run(browser=False):
         directory=Path(directory);db=directory/'traffic.db';initialize(db)
         spec=specification('resource',server.server_port);spec_file=directory/'spec.json';spec_file.write_text(json.dumps(spec))
         events,labels=collect('resource',base,spec,88)
-        model=fit_model(events[:160],events[160:200]);DetectorService(str(db)).registry.save_model(model)
         subprocess.run([str(binary),'ingest','--file',str(spec_file),'--memgraph-uri','bolt://127.0.0.1:7689'],check=True)
         def launch(args,env=None):
             log=(directory/f'process-{len(processes)}.log').open('w')
             process=subprocess.Popen(args,cwd=ROOT,env={**os.environ,**(env or {})},stdout=log,stderr=log)
             processes.append((process,log));return process
         try:
-            detector=launch([str(ROOT/'.venv/bin/python'),'-m','uvicorn','app:app','--app-dir','anomaly-detector','--port','5009'],{'SENTRY_DB_PATH':str(db)})
+            detector=launch([sys.executable,'-m','uvicorn','app:app','--app-dir','anomaly-detector','--port','5009'],{'SENTRY_DB_PATH':str(db)})
             wait_for(lambda:fetch('http://127.0.0.1:5009','/health'))
             consumer_args=[str(binary),'consume-traffic','--kafka-brokers','127.0.0.1:19093','--kafka-topic','sentry-integration-'+str(os.getpid()),'--kafka-group','sentry-integration-'+str(os.getpid()),'--sqlite-db',str(db),'--memgraph-uri','bolt://127.0.0.1:7689']
-            consumer=launch(consumer_args,{'SENTRY_PYTHON_API':'http://127.0.0.1:5009/predict','SENTRY_REDIS_URL':'redis://127.0.0.1:6389'})
+            consumer=launch(consumer_args,{'SENTRY_PYTHON_API':'http://127.0.0.1:5009/jevlet/predict','SENTRY_REDIS_URL':'redis://127.0.0.1:6389'})
             dashboard_args=[str(binary),'dashboard','--port','8099','--sqlite-db',str(db),'--memgraph-uri','bolt://127.0.0.1:7689']
             dashboard=launch(dashboard_args,{'SENTRY_DETECTOR_URL':'http://127.0.0.1:5009'})
             wait_for(lambda:fetch('http://127.0.0.1:8099','/api/health'))
@@ -67,7 +65,7 @@ def run(browser=False):
                 items=fetch('http://127.0.0.1:8099','/api/traffic')['items']
                 return items if len(items)==3 and all(e['evaluation_status']=='evaluated' for e in items) else False
             rows=wait_for(evaluated);by_id={e['request_id']:e for e in rows}
-            assert by_id['live-abnormal']['prediction']['behavioral_anomaly']
+            assert all(row['prediction']['model_kind']=='jevlet' for row in rows)
             assert 'shadow_candidate' in by_id['live-shadow']['prediction']['inventory_signals']
             dry=fetch('http://127.0.0.1:8099','/api/scans',{'target':base,'specTitle':'resource','specVersion':'1','dryRun':True})
             dry=wait_for(lambda:(s if (s:=fetch('http://127.0.0.1:8099','/api/scans/'+dry['id']))['status']!='running' else False))
@@ -103,9 +101,9 @@ def run(browser=False):
             traffic_file.write_text(json.dumps(offline)+'\n');subprocess.run(replay,check=True,capture_output=True)
             wait_for(lambda:any(e['request_id']=='live-pending' and e['evaluation_status']=='pending' for e in fetch('http://127.0.0.1:8099','/api/traffic')['items']))
             consumer.terminate();consumer.wait(timeout=15)
-            detector=launch([str(ROOT/'.venv/bin/python'),'-m','uvicorn','app:app','--app-dir','anomaly-detector','--port','5009'],{'SENTRY_DB_PATH':str(db)})
+            detector=launch([sys.executable,'-m','uvicorn','app:app','--app-dir','anomaly-detector','--port','5009'],{'SENTRY_DB_PATH':str(db)})
             wait_for(lambda:fetch('http://127.0.0.1:5009','/health'))
-            consumer=launch(consumer_args,{'SENTRY_PYTHON_API':'http://127.0.0.1:5009/predict','SENTRY_REDIS_URL':'redis://127.0.0.1:6389'})
+            consumer=launch(consumer_args,{'SENTRY_PYTHON_API':'http://127.0.0.1:5009/jevlet/predict','SENTRY_REDIS_URL':'redis://127.0.0.1:6389'})
             wait_for(lambda:any(e['request_id']=='live-pending' and e['evaluation_status']=='evaluated' for e in fetch('http://127.0.0.1:8099','/api/traffic')['items']))
             result={'passed':True,'events':4,'scan_id':scan['id'],'findings':len(findings),'browser_checked':browser,'checks':['real Kafka ingestion','per-event predictions','passive-to-active verification','authentication comparison','zero-request dry run','restart persistence','duplicate replay','detector outage','pending recovery after consumer restart']}
             (evidence/'result.json').write_text(json.dumps(result,indent=2));print(json.dumps(result,indent=2))

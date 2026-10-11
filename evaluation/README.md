@@ -37,7 +37,7 @@ FUR-API also provides a small set of labeled anomalies in its training split. Th
 python3 evaluation/evaluate_reviewed_fur.py
 ```
 
-The running service can now use reviewed labels. Set `SENTRY_REVIEW_TOKEN`, label requests with `PUT /traffic/{request_id}/review` and `X-Review-Token`, then call `POST /models/retrain`. Labels override automatic predictions during training; after at least 20 reviewed anomalies fall in the training window, retraining selects the Extra Trees model. With fewer examples it keeps the normal-only Isolation Forest. Only eight labeled anomalies remain in this dataset's validation window, so confirm the result on another labeled dataset before presenting it as general performance.
+These forest and Extra Trees results describe the retained offline implementation. The running service now uses Jevlet exclusively for behavioral prediction. Set `SENTRY_REVIEW_TOKEN`, label requests with `PUT /traffic/{request_id}/review` and `X-Review-Token`, then call `POST /jevlet/models/retrain` for explicit CUDA training on reviewed data. At least 160 reviewed normals and 20 anomalies are required. The new registry does not activate legacy forest models. See [Jevlet integration](JEVLET_INTEGRATION.md) for the active contract and live evaluation.
 
 Example review and retrain calls:
 
@@ -46,7 +46,7 @@ curl -X PUT http://127.0.0.1:5001/traffic/REQUEST_ID/review \
   -H "X-Review-Token: $SENTRY_REVIEW_TOKEN" \
   -H 'Content-Type: application/json' \
   -d '{"label":"anomaly"}'
-curl -X POST http://127.0.0.1:5001/models/retrain \
+curl -X POST http://127.0.0.1:5001/jevlet/models/retrain \
   -H 'Content-Type: application/json' -d '{"target_fpr":0.05}'
 ```
 

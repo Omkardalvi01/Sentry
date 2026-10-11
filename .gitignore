@@ -50,6 +50,7 @@ swagger.json
 research/results/
 research/generated/
 !anomaly-detector/requirements.txt
+!anomaly-detector/requirements-jevlet.txt
 !research/requirements.txt
 
 .integration-data/

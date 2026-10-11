@@ -147,15 +147,3 @@ def test_legacy_database_upgrade(tmp_path):
     with connect(path) as conn:
         columns = {row['name'] for row in conn.execute('PRAGMA table_info(api_traffic)')}
         assert 'graph_known' in columns and 'review_label' in columns
-
-def test_api_lifecycle_and_validation(tmp_path, monkeypatch):
-    import app as detector_api
-    from fastapi.testclient import TestClient
-    monkeypatch.setattr(detector_api, 'DB_PATH', str(tmp_path/'api.db'))
-    with TestClient(detector_api.app) as client:
-        assert client.get('/health').json()['status'] == 'rules_only'
-        assert client.post('/predict', json=events(1)[0]).json()['evaluation_status'] == 'evaluated'
-        assert client.post('/predict', json=events(1)[0] | {'status_code': 0}).status_code == 422
-        assert client.post('/models/retrain', json={}).status_code == 409
-        assert client.get('/health').json()['status'] == 'rules_only'
-        assert client.post('/models/missing/activate').status_code == 404

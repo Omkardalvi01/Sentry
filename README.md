@@ -6,15 +6,18 @@ A reachable deprecated endpoint is a lifecycle finding. It is not automatically 
 
 ## Run locally
 
-Requires Go matching `go.mod`, Python 3.11, and Docker Compose for the complete pipeline.
+Requires Go matching `go.mod`, Python with PyTorch/Transformers, a local Jevlet source checkout and trained checkpoint, and Docker Compose for the complete pipeline. Native CUDA inference is the default; explicitly choose `SENTRY_JEVLET_DEVICE=cpu` when GPU inference is unavailable.
 
 ```sh
 go build -o bin/sentry ./cmd/sentry
 uv venv --python 3.11 .venv
 uv pip install --python .venv/bin/python --require-hashes -r research/requirements.lock
+uv pip install --python .venv/bin/python -r anomaly-detector/requirements-jevlet.txt
+export SENTRY_JEVLET_REPO=/absolute/path/to/jevlet
+export SENTRY_JEVLET_CHECKPOINT=/absolute/path/to/trained/seed-42
 ```
 
-The complete container environment uses Memgraph, a Kafka-compatible Redpanda broker, Redis, the Python detector, three local testbeds, the consumer, and dashboard:
+The complete container environment uses Memgraph, a Kafka-compatible Redpanda broker, Redis, the Python detector, three local testbeds, the consumer, and dashboard. It mounts the configured local source and checkpoint directories and uses CPU inference. Use the native launcher below for CUDA inference; model training requires CUDA. Checkpoints are local artifacts and are not shipped in Git:
 
 ```sh
 docker compose up -d --build
@@ -69,25 +72,44 @@ Every event is evaluated. Redis only caches inventory snapshots for 60 seconds; 
 
 The consumer stores traffic and prediction outcomes atomically before committing Kafka offsets. Detector outages persist `pending` records, which are retried after recovery and across consumer restarts. Invalid events are rejected durably with their Kafka source identity. Duplicate request IDs do not duplicate stored traffic.
 
-The Python detector combines endpoint-relative body-size checks and Isolation Forest. Its features include HTTP method, route and query shape, decoded traversal/injection indicators, response status and body size, optional response latency and wire size, selected request-header presence, and graph metadata. It profiles numeric path IDs as one endpoint when no OpenAPI template is available. Header values are not used as features. Model scores are not probabilities. Time-of-day features are enabled only when training history covers at least a day.
+The active Python detector uses Jevlet for request-anomaly classification. It receives bounded captured request/response text, method, path, query, status, available latency and wire size, header names, and normal-baseline size/latency changes. Request identities, labels, and header values are excluded. Its classification score is not a calibrated probability of an attack. Graph inventory signals stay separate from the learned behavioral verdict. The separate body-size alert rule is disabled. Isolation Forest and its offline evaluation code remain in `anomaly-detector/detector.py`; its HTTP routes are removed.
 
-Retraining orders eligible traffic chronologically, trains on the first 80%, and calibrates a default 5% false-positive target on the final 20%. It uses Isolation Forest until at least 20 reviewed anomalies are available in the training slice, then trains an Extra Trees classifier from reviewed anomalies and normal baseline traffic. The final validation slice is normal-only for threshold calibration. Set `target_fpr` in the retrain request to choose another value above 0 through 0.25. At least 32 normal training and 16 normal validation events are required. Pending and unreviewed predicted anomalies are excluded; explicit analyst labels override predictions. Failed retraining retains the old model. Model artifacts remain local trusted files because scikit-learn persistence uses pickle.
+Explicit Jevlet retraining uses CUDA and reviewed labels only, requiring at least 160 normal events and 20 anomalies. Earlier traffic is split into training/selection with both labels; a later normal window calibrates the default 5% false-positive target. The checkpoint selected by validation loss is saved before activation. Failed training retains the previous active model. No scheduled forest training runs in the active service. Set `target_fpr` above 0 through 0.25 and optional timezone-aware `start`/`end` timestamps. Model directories and preprocessing pickles must come from a trusted local run. The Jevlet registry is separate from the legacy forest registry.
 
-To label traffic, configure `SENTRY_REVIEW_TOKEN` and call `PUT /traffic/{request_id}/review` with `X-Review-Token` and `{"label":"normal"}` or `{"label":"anomaly"}`. Then call `POST /models/retrain`. The review endpoint is disabled until a token is configured.
+A checkpoint containing the trained failure head also exposes `POST /jevlet/service-failure` with `{"telemetry_text":"..."}`. This classifies a prepared service telemetry window separately from a suspicious request. Kafka currently provides individual HTTP events; it does not aggregate telemetry windows automatically. Retraining the request encoder requires retraining a matching failure head before this output can be used again.
+
+To label traffic, configure `SENTRY_REVIEW_TOKEN` and call `PUT /traffic/{request_id}/review` with `X-Review-Token` and `{"label":"normal"}` or `{"label":"anomaly"}`. Then call `POST /jevlet/models/retrain`. The review endpoint is disabled until a token is configured.
 
 Traffic events may include `response_time_ms` and `response_size_bytes`; older producers can omit them. Sentry persists them for retraining and restores them when retrying pending predictions.
 
 ```sh
-# Explicit synthetic normal baseline, for model lifecycle demonstrations only.
-.venv/bin/python anomaly-detector/seed_db.py --db traffic.db
+# Configure a previously trained Jevlet checkpoint first.
 SENTRY_DB_PATH="$PWD/traffic.db" .venv/bin/uvicorn app:app --app-dir anomaly-detector --port 5001
 ```
 
 ```sh
-curl --fail -H 'Content-Type: application/json' -d '{}' http://127.0.0.1:5001/models/retrain
+curl --fail -H 'Content-Type: application/json' -d '{}' http://127.0.0.1:5001/jevlet/models/retrain
 ```
 
-This seeded database is clearly synthetic and must not be presented as real collected traffic.
+The retraining route requires reviewed traffic; demo fixture traffic is not automatically labelled.
+
+Validated application adapters can use a separate request-only Jevlet head and a
+normal-data threshold for explicitly configured path scopes. Other requests keep
+the original Jevlet head. See [the adaptation results](evaluation/JEVLET_DOMAIN_ADAPTATION.md)
+for scope, evaluation counts and the remaining ownership-detection limitation.
+
+To activate a trusted, already trained checkpoint while the detector is stopped:
+
+```sh
+python research/activate_jevlet.py --db .local-data/app/traffic.db \
+  --checkpoint /absolute/path/to/validated/checkpoint --repo /absolute/path/to/jevlet
+```
+
+For a running detector, add `--detector-url http://127.0.0.1:5001` and use the same
+database as that detector. Registration validates the checkpoint before the
+existing activation endpoint switches models. Activation persists across restarts.
+CUDA is the default; `--device cpu` explicitly selects CPU inference. Checkpoints
+remain local and must be provisioned separately from a Git checkout.
 
 ## APIs
 
@@ -98,16 +120,17 @@ This seeded database is clearly synthetic and must not be presented as real coll
 | Go | `POST /api/scans`, `DELETE /api/scans/{id}` | Run or cancel real jobs |
 | Go | `GET /api/findings`, `/api/findings/{id}` | Paginated findings and detailed evidence |
 | Go | `GET /api/traffic`, `/api/anomalies` | Paginated observations (`limit`, `offset`) |
-| Python | `POST /predict` | Per-event inventory and behavioral signals |
-| Python | `GET /health`, `/models` | Detector state and model metadata |
-| Python | `POST /models/retrain` | Train from an explicit optional `start`/`end` window |
-| Python | `POST /models/{id}/activate` | Activate an existing compatible model |
+| Python | `POST /jevlet/predict` | Per-event inventory and Jevlet behavioral signals |
+| Python | `GET /health`, `/jevlet/models` | Detector state and model metadata |
+| Python | `POST /jevlet/models/retrain` | Train Jevlet on CUDA from reviewed events |
+| Python | `POST /jevlet/models/{id}/activate` | Activate a registered Jevlet checkpoint |
+| Python | `POST /jevlet/service-failure` | Classify a supplied telemetry window using a matching failure head |
 
 The dashboard uses persisted records exclusively. It does not generate simulated findings or silently replace failed backend requests with a demo. Kafka connectivity is not directly measured by the dashboard; it reports stored observations rather than inventing a connected state.
 
 ## External dataset evaluation
 
-The separate [evaluation workspace](evaluation/README.md) contains reproducible API scanning and labeled traffic evaluation scripts, pinned dataset revisions, and result summaries. The [supervisor brief](evaluation/SUPERVISOR_BRIEF.md) summarizes API-only, graph-only, and combined results. The current [zombie/shadow graph inventory result](evaluation/results/zombie-shadow-graph.json), [Isolation Forest train/test result](evaluation/results/isolation-forest-fur-api.json), [reviewed-label classifier result](evaluation/results/fur-api-reviewed-examples.json), [merged detector replay](evaluation/results/fur-api-enhanced.json), and [model feature comparison](evaluation/results/detector-feature-comparison.json) are linked directly. Reviewed traffic can now train a label-aware model: configure `SENTRY_REVIEW_TOKEN`, label requests through the protected review endpoint, then retrain. The service keeps Isolation Forest until at least 20 reviewed anomalies are available. The older crAPI, Nicefish, and Train Ticket reports are from the pre-PR scanner; `evaluation/run_api.py` now targets this architecture's `scan-spec` workflow.
+The separate [evaluation workspace](evaluation/README.md) contains reproducible API scanning and labelled traffic evaluation scripts, pinned dataset revisions, and historical result summaries. The [supervisor brief](evaluation/SUPERVISOR_BRIEF.md) summarizes API-only, graph-only, and combined results. Historical [graph inventory](evaluation/results/zombie-shadow-graph.json), [Isolation Forest](evaluation/results/isolation-forest-fur-api.json), [reviewed-label classifier](evaluation/results/fur-api-reviewed-examples.json), and [feature comparison](evaluation/results/detector-feature-comparison.json) results remain available. The active service now uses Jevlet; see [live integration evaluation](evaluation/JEVLET_INTEGRATION.md). The older crAPI, Nicefish, and Train Ticket reports are from the pre-PR scanner; `evaluation/run_api.py` now targets this architecture's `scan-spec` workflow.
 
 ## Research and verification
 
@@ -135,7 +158,7 @@ The local launcher runs the Go and Python services directly and uses Docker for 
 ./scripts/run-local.sh
 ```
 
-Open **http://127.0.0.1:8088**. Startup trains a baseline from normal requests to the local fixtures, starts continuous real HTTP traffic through Kafka, and submits an initial real scan. Fixtures are intentionally vulnerable local APIs, not production traffic.
+Open **http://127.0.0.1:8088**. Startup loads the configured Jevlet checkpoint, starts continuous real HTTP traffic through Kafka, and submits an initial real scan. Fixtures are intentionally vulnerable local APIs, not production traffic. A model trained on FUR-API has not been calibrated to these fixtures; use a labelled held-out dataset to measure classifier accuracy.
 
 Click **New scan**, select **resource · 1**, and enter `http://127.0.0.1:9001`. Add an `Authorization` header with value `Bearer fixture`. Preview the request plan, leave Dry run unchecked, and click Start scan. Use Endpoints, Scans, Findings, Traffic, and System health to inspect the results. The other fixtures are `versioned` on 9002 and `gateway` on 9003.
 
@@ -146,7 +169,6 @@ Stop with Ctrl+C in the launcher terminal, or from another terminal:
 ```sh
 ./scripts/run-local.sh --stop
 ```
-
 
 ## Investigate one endpoint
 
