@@ -5,3 +5,5 @@ safetensors==0.6.2
 PyYAML==6.0.3
 pandas==2.3.0
 pyarrow==23.0.1
+# Jevlet's data module is imported by its model even for inference.
+datasets==4.8.5
