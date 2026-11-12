@@ -2,7 +2,7 @@ name: checks
 on: [push, pull_request]
 jobs:
   unit:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -16,7 +16,7 @@ jobs:
           pip install -r anomaly-detector/requirements-jevlet.txt
       - run: python -m pytest -q tests
   integration:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     env:
       SENTRY_JEVLET_REPO: ${{ github.workspace }}/.local-data/jevlet-ci-source
       SENTRY_JEVLET_CHECKPOINT: ${{ github.workspace }}/.local-data/jevlet-ci-checkpoint

@@ -1,9 +1,15 @@
 #!/bin/sh
 set -eu
 cd "$(dirname "$0")/.."
+export SENTRY_JEVLET_REPO="${SENTRY_JEVLET_REPO:-$PWD/.local-data/jevlet-ci-source}"
+export SENTRY_JEVLET_CHECKPOINT="${SENTRY_JEVLET_CHECKPOINT:-$PWD/.local-data/jevlet-ci-checkpoint}"
+export SENTRY_JEVLET_DEVICE="${SENTRY_JEVLET_DEVICE:-cpu}"
 python="${SENTRY_PYTHON_EXECUTABLE:-.venv/bin/python}"
-if [ -z "${SENTRY_PYTHON_EXECUTABLE:-}" ]; then
+if [ ! -x "$python" ]; then
+    if [ -n "${SENTRY_PYTHON_EXECUTABLE:-}" ]; then printf '%s\n' 'Configured Python executable is missing'; exit 1; fi
     uv venv --python 3.11 .venv
+fi
+if [ -z "${SENTRY_PYTHON_EXECUTABLE:-}" ]; then
     uv pip install --python "$python" --require-hashes -r research/requirements.lock
     uv pip install --python "$python" -r anomaly-detector/requirements-jevlet.txt
 fi
@@ -12,9 +18,13 @@ mkdir -p .integration-data/memgraph-data .integration-data/memgraph-logs .integr
 chmod 777 .integration-data/memgraph-data .integration-data/memgraph-logs .integration-data/kafka-data
 export SENTRY_TEST_UID="$(id -u)" SENTRY_TEST_GID="$(id -g)"
 trap 'docker compose -f compose.integration.yaml down' EXIT
-COMPOSE_PROGRESS=plain docker compose -f compose.integration.yaml up -d
+COMPOSE_PROGRESS=plain docker compose -f compose.integration.yaml up -d --wait --wait-timeout 90
 GOCACHE="${SENTRY_GO_CACHE:-/tmp/sentry-go-cache}" go build -o bin/sentry ./cmd/sentry
-if [ "${CI:-}" = true ]; then "$python" -m playwright install --with-deps chromium; else "$python" -m playwright install chromium; fi
+if [ "${CI:-}" = true ]; then
+    "$python" -m playwright install --with-deps chromium || "$python" -m playwright install chromium || true
+else
+    "$python" -m playwright install chromium || true
+fi
 "$python" - <<'PYWAIT'
 import socket,time
 for port in [7689,19093,6389]:

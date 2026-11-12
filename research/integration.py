@@ -84,7 +84,7 @@ def run(browser=False):
                     page.on('pageerror',lambda error:errors.append(str(error)))
                     page.goto('http://127.0.0.1:8099');page.wait_for_function("document.querySelector('#overview').textContent.includes('Traffic observations')")
                     page.locator('nav [data-view="findings"]').click();page.locator('#results-table tbody tr').first.click();assert page.locator('#detail').is_visible();page.locator('#close-detail').click()
-                    page.locator('#new-scan').click();page.locator('#scan-target').fill(base);page.locator('#scan-rps').fill('1000');page.locator('#dry-run').check();page.locator('#submit-scan').click();page.wait_for_function("document.querySelector('#scan-summary').textContent.includes('dry run')")
+                    page.locator('#new-scan').click();page.locator('#scan-target').fill(base);page.locator('summary:has-text("Request limits and execution options")').click();page.locator('#scan-rps').fill('1000');page.locator('#dry-run').check();page.locator('#submit-scan').click();page.wait_for_function("document.querySelector('#scan-summary').textContent.includes('dry run')")
                     page.screenshot(path=str(evidence/'dashboard-desktop.png'),full_page=True)
                     page.set_viewport_size({'width':390,'height':844});page.locator('nav [data-view="overview"]').click();page.screenshot(path=str(evidence/'dashboard-mobile.png'),full_page=True)
                     assert not errors,errors
