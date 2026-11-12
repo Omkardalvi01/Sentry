@@ -2,6 +2,9 @@
 # Full local fixture demo: native app processes plus Docker dependencies.
 set -eu
 cd "$(dirname "$0")/.."
+export SENTRY_JEVLET_REPO="${SENTRY_JEVLET_REPO:-$PWD/.local-data/jevlet-ci-source}"
+export SENTRY_JEVLET_CHECKPOINT="${SENTRY_JEVLET_CHECKPOINT:-$PWD/.local-data/jevlet-adapted-checkpoint}"
+export SENTRY_JEVLET_DEVICE="${SENTRY_JEVLET_DEVICE:-cpu}"
 python="${SENTRY_PYTHON_EXECUTABLE:-.venv/bin/python}"
 if [ "${1:-}" = --stop ]; then
     "$python" research/demo.py --stop

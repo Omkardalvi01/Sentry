@@ -4,8 +4,8 @@ services:
     image: ${SENTRY_LOCAL_MEMGRAPH_IMAGE:-memgraph/memgraph:3.0.0}
     user: "${SENTRY_LOCAL_UID:-1000}:${SENTRY_LOCAL_GID:-1000}"
     command: ["--log-file=/var/log/memgraph/local.log", "--telemetry-enabled=false"]
-    volumes: ["./.local-data/memgraph:/var/lib/memgraph", "./.local-data/graph-logs:/var/log/memgraph"]
-    logging: {driver: none}
+    volumes: ["./.local-data/memgraph:/var/lib/memgraph:z", "./.local-data/graph-logs:/var/log/memgraph:z"]
+    # logging: {driver: none}
     ports: ["127.0.0.1:7688:7687"]
     healthcheck:
       test: ["CMD-SHELL", "echo 'RETURN 1;' | mgconsole --host 127.0.0.1 --port 7687"]
@@ -14,8 +14,8 @@ services:
       retries: 30
   kafka:
     image: redpandadata/redpanda:v24.3.18
-    volumes: ["./.local-data/kafka:/var/lib/redpanda/data"]
-    logging: {driver: none}
+    volumes: ["./.local-data/kafka:/var/lib/redpanda/data:z"]
+    # logging: {driver: none}
     command: ["redpanda", "start", "--overprovisioned", "--smp", "1", "--memory", "512M", "--reserve-memory", "0M", "--node-id", "0", "--check=false", "--kafka-addr", "0.0.0.0:9092", "--advertise-kafka-addr", "127.0.0.1:19092"]
     ports: ["127.0.0.1:19092:9092"]
     healthcheck:
@@ -25,7 +25,7 @@ services:
       retries: 30
   redis:
     image: ${SENTRY_LOCAL_REDIS_IMAGE:-redis:7.4.2-alpine}
-    logging: {driver: none}
+    # logging: {driver: none}
     ports: ["127.0.0.1:6388:6379"]
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]

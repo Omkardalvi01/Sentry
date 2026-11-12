@@ -1,0 +1,202 @@
+{
+  "timestamp": "2026-11-12T13:54:30.585202+00:00",
+  "device": "cpu",
+  "source_checkpoint": ".local-data/jevlet-adapted-checkpoint",
+  "adapted_checkpoint": "/home/jaydalvi/projects/fyp_sentry/Sentry/.local-data/jevlet-adapted-checkpoint",
+  "thresholds": {
+    "baseline": 0.5,
+    "adapted_scopes": {
+      "station": {
+        "prefixes": [
+          "/api/v1/stationservice/"
+        ],
+        "threshold": 0.3641572296619416,
+        "calibration_normals": 96
+      },
+      "crapi": {
+        "prefixes": [
+          "/identity/",
+          "/community/",
+          "/workshop/"
+        ],
+        "threshold": 0.8786508440971376,
+        "calibration_normals": 96
+      }
+    }
+  },
+  "metrics": {
+    "fur_api": {
+      "baseline": {
+        "accuracy": 0.8694516971279374,
+        "balanced_accuracy": 0.5,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "average_precision": 0.3815547460556767,
+        "roc_auc": 0.748345011678345,
+        "true_positive": 0,
+        "false_positive": 0,
+        "true_negative": 999,
+        "false_negative": 150,
+        "false_positive_rate": 0.0,
+        "threshold": 0.5,
+        "excluded_invalid_status": 1,
+        "total_rows": 1149
+      },
+      "adapted": {
+        "accuracy": 0.8694516971279374,
+        "balanced_accuracy": 0.5,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "average_precision": 0.3815527686651624,
+        "roc_auc": 0.7482916249582915,
+        "true_positive": 0,
+        "false_positive": 0,
+        "true_negative": 999,
+        "false_negative": 150,
+        "false_positive_rate": 0.0,
+        "threshold": 0.5,
+        "excluded_invalid_status": 1,
+        "total_rows": 1149
+      },
+      "canonical_baseline": {
+        "accuracy": 0.9243,
+        "precision": 0.678,
+        "recall": 0.8,
+        "f1": 0.734,
+        "false_positive_rate": 0.0571,
+        "tp": 120,
+        "fp": 57,
+        "fn": 30,
+        "tn": 942
+      }
+    },
+    "station": {
+      "baseline": {
+        "accuracy": 0.925,
+        "balanced_accuracy": 0.95,
+        "precision": 0.7692307692307693,
+        "recall": 1.0,
+        "f1": 0.8695652173913043,
+        "average_precision": 0.9952380952380951,
+        "roc_auc": 0.9983333333333333,
+        "true_positive": 20,
+        "false_positive": 6,
+        "true_negative": 54,
+        "false_negative": 0,
+        "false_positive_rate": 0.1,
+        "threshold": 0.5030962228775026
+      },
+      "adapted": {
+        "accuracy": 0.975,
+        "balanced_accuracy": 0.9833333333333334,
+        "precision": 0.9090909090909091,
+        "recall": 1.0,
+        "f1": 0.9523809523809523,
+        "average_precision": 0.9899749373433584,
+        "roc_auc": 0.9974999999999999,
+        "true_positive": 20,
+        "false_positive": 2,
+        "true_negative": 58,
+        "false_negative": 0,
+        "false_positive_rate": 0.03333333333333333,
+        "threshold": 0.3641572296619416
+      },
+      "canonical_shift": {
+        "baseline_accuracy": 0.525,
+        "adapted_accuracy": 1.0,
+        "held_out_baseline_accuracy": 0.8625,
+        "held_out_adapted_accuracy": 0.975,
+        "held_out_adapted_recall": 1.0,
+        "held_out_adapted_fpr": 0.0333
+      }
+    },
+    "crapi": {
+      "baseline_overall": {
+        "accuracy": 0.86,
+        "balanced_accuracy": 0.7666666666666666,
+        "precision": 1.0,
+        "recall": 0.5333333333333333,
+        "f1": 0.6956521739130435,
+        "average_precision": 0.7724448477848362,
+        "roc_auc": 0.8276190476190477,
+        "true_positive": 16,
+        "false_positive": 0,
+        "true_negative": 70,
+        "false_negative": 14,
+        "false_positive_rate": 0.0,
+        "threshold": 0.8012729287147523
+      },
+      "adapted_overall": {
+        "accuracy": 0.86,
+        "balanced_accuracy": 0.7666666666666666,
+        "precision": 1.0,
+        "recall": 0.5333333333333333,
+        "f1": 0.6956521739130435,
+        "average_precision": 0.7777717304082672,
+        "roc_auc": 0.8323809523809523,
+        "true_positive": 16,
+        "false_positive": 0,
+        "true_negative": 70,
+        "false_negative": 14,
+        "false_positive_rate": 0.0,
+        "threshold": 0.8786508440971376
+      },
+      "baseline_content": {
+        "accuracy": 0.95,
+        "balanced_accuracy": 0.9,
+        "precision": 1.0,
+        "recall": 0.8,
+        "f1": 0.8888888888888888,
+        "average_precision": 0.942185600748013,
+        "roc_auc": 0.9733333333333334,
+        "true_positive": 16,
+        "false_positive": 0,
+        "true_negative": 60,
+        "false_negative": 4,
+        "false_positive_rate": 0.0,
+        "threshold": 0.8012729287147523
+      },
+      "adapted_content": {
+        "accuracy": 0.95,
+        "balanced_accuracy": 0.9,
+        "precision": 1.0,
+        "recall": 0.8,
+        "f1": 0.8888888888888888,
+        "average_precision": 0.9427769985974755,
+        "roc_auc": 0.9733333333333333,
+        "true_positive": 16,
+        "false_positive": 0,
+        "true_negative": 60,
+        "false_negative": 4,
+        "false_positive_rate": 0.0,
+        "threshold": 0.8786508440971376
+      },
+      "canonical_shift": {
+        "baseline_accuracy": 0.45,
+        "adapted_accuracy": 0.87,
+        "content_baseline_accuracy": 0.4,
+        "content_adapted_accuracy": 0.9625,
+        "diagnostic_baseline_accuracy": 0.65,
+        "diagnostic_adapted_accuracy": 0.875
+      }
+    },
+    "service_failures": {
+      "train_ticket": {
+        "windows": 75,
+        "baseline_accuracy": 0.6933,
+        "adapted_accuracy": 0.7333,
+        "baseline_recall": 0.4524,
+        "adapted_recall": 0.5238
+      },
+      "rcaeval_all": {
+        "windows": 189,
+        "baseline_accuracy": 0.7619,
+        "adapted_accuracy": 0.7884,
+        "baseline_recall": 0.5833,
+        "adapted_recall": 0.6296
+      }
+    }
+  }
+}

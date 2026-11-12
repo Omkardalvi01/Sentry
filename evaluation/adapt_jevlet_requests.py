@@ -26,10 +26,10 @@ from local_models import LocalDetector, threshold_at_fpr
 from jevlet_request_adapter import RequestHead, encode_requests, request_text
 
 
-def group_weights(rows):
+def group_weights(rows, device='cuda'):
     groups = [(r['app'], bool(r['truth'])) for r in rows]
     counts = {key: groups.count(key) for key in set(groups)}
-    return torch.tensor([1 / counts[g] for g in groups], device='cuda')
+    return torch.tensor([1 / counts[g] for g in groups], device=device)
 
 
 def evaluate_records(detector, rows):
@@ -63,7 +63,7 @@ def main():
     parser.add_argument('--output', type=Path, required=True)
     parser.add_argument('--jevlet-repo', type=Path, default=Path('E:/clg/DL/mini_proj/jevlet'))
     args=parser.parse_args()
-    if not torch.cuda.is_available(): raise RuntimeError('Adapter training requires CUDA')
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
     torch.set_num_threads(4); torch.manual_seed(42); np.random.seed(42)
     data=json.loads(args.data.read_text(encoding='utf-8')); parts=data['splits']
     # Audit attack-template separation and contradictory visible evidence before fitting.
@@ -77,26 +77,26 @@ def main():
         if fitting_text[request_text(r['event'])]!=bool(r['truth']): raise ValueError('Contradictory fitting labels')
     args.output.mkdir(parents=True, exist_ok=False)
     write_json(args.output/'protocol.json', {'seed':42,'architecture':'1536 -> 128 GELU dropout 0.1 -> 2',
-      'optimizer':'CUDA AdamW lr 0.001 weight_decay 0.01; maximum 100 epochs, patience 12',
+      'optimizer':f'{device.upper()} AdamW lr 0.001 weight_decay 0.01; maximum 100 epochs, patience 12',
       'selection':'mean cross entropy with equal weight per application/class; no test-based selection',
       'calibration':'separate normal-only 5% FPR per application; thresholds saved before test scoring',
-      'encoder':'frozen Jevlet, FP32 CUDA; original security/failure weights unchanged',
+      'encoder':'frozen Jevlet, FP32; original security/failure weights unchanged',
       'data_sha256':hashlib.sha256(args.data.read_bytes()).hexdigest(),
-      'counts':{p:len(v) for p,v in parts.items()},'gpu':torch.cuda.get_device_name()})
-    detector=LocalDetector.load(args.checkpoint,'jevlet',args.jevlet_repo,'cuda')
+      'counts':{p:len(v) for p,v in parts.items()},'gpu':torch.cuda.get_device_name() if torch.cuda.is_available() else 'cpu'})
+    detector=LocalDetector.load(args.checkpoint,'jevlet',args.jevlet_repo, device)
     for parameter in detector.model.parameters(): parameter.requires_grad_(False)
     began=time.perf_counter()
-    features={p:encode_requests(detector.model,[r['event'] for r in parts[p]]).clone()
+    features={p:encode_requests(detector.model,[r['event'] for r in parts[p]]).clone().to(device)
               for p in ('train','selection','calibration')}
     extraction_seconds=time.perf_counter()-began
-    labels={p:torch.tensor([r['truth'] for r in parts[p]],dtype=torch.long,device='cuda') for p in features}
-    weights={p:group_weights(parts[p]) for p in ('train','selection')}
-    head=RequestHead(features['train'].shape[1]).cuda()
+    labels={p:torch.tensor([r['truth'] for r in parts[p]],dtype=torch.long,device=device) for p in features}
+    weights={p:group_weights(parts[p], device=device) for p in ('train','selection')}
+    head=RequestHead(features['train'].shape[1]).to(device)
     head.centre.copy_(features['train'].mean(0)); head.scale.copy_(features['train'].std(0).clamp_min(.01))
     optimizer=torch.optim.AdamW(head.parameters(),lr=.001,weight_decay=.01)
     best=float('inf'); stale=0; history=[]; state=None; began=time.perf_counter()
     for epoch in range(100):
-        head.train(); order=torch.randperm(len(features['train']),device='cuda')
+        head.train(); order=torch.randperm(len(features['train']),device=device)
         for indices in order.split(64):
             optimizer.zero_grad(set_to_none=True)
             losses=torch.nn.functional.cross_entropy(head(features['train'][indices]),labels['train'][indices],reduction='none')
@@ -112,7 +112,8 @@ def main():
             best=val; stale=0; state={k:v.detach().clone() for k,v in head.state_dict().items()}
         else: stale+=1
         if stale>=12: break
-    torch.cuda.synchronize(); training_seconds=time.perf_counter()-began
+    if device == 'cuda': torch.cuda.synchronize()
+    training_seconds=time.perf_counter()-began
     head.load_state_dict(state); head.eval()
     with torch.inference_mode(): cal=head(features['calibration']).softmax(-1)[:,1].cpu().numpy()
     scopes={}
@@ -121,16 +122,16 @@ def main():
         if len(indices)<64: raise ValueError('Need at least 64 calibration normals per application')
         scopes[app]={'prefixes':prefixes,'threshold':threshold_at_fpr(cal[indices],.05),'calibration_normals':len(indices)}
     candidate=args.output/'checkpoint'; shutil.copytree(args.checkpoint,candidate)
-    config={'feature_size':1536,'hidden_size':128,'input_version':'request-evidence-v1',
+    config={'feature_size':features['train'].shape[1],'hidden_size':128,'input_version':'request-evidence-v1',
             'encoder_sha256':hashlib.sha256((candidate/'jevlet/model.safetensors').read_bytes()).hexdigest(),
-            'scopes':scopes,'training_device':'cuda','frozen_encoder':True,
+            'scopes':scopes,'training_device':device,'frozen_encoder':True,
             'limitations':'No requester/resource ownership evidence; known application path scopes only.'}
     save_file({k:v.detach().cpu().contiguous() for k,v in head.state_dict().items()},str(candidate/'request-head.safetensors'))
     write_json(candidate/'request-adapter.json',config)
     write_json(args.output/'training.json',{'history':history,'training_seconds':training_seconds,
-               'extraction_seconds':extraction_seconds,'device':'cuda','selection_best_loss':best})
+               'extraction_seconds':extraction_seconds,'device':device,'selection_best_loss':best})
     # Head and thresholds are now fixed. First access to held-out model scores.
-    candidate_detector=LocalDetector.load(candidate,'jevlet',args.jevlet_repo,'cuda')
+    candidate_detector=LocalDetector.load(candidate,'jevlet',args.jevlet_repo, device)
     for label,model in [('baseline',detector),('adapted',candidate_detector)]:
         result=evaluate_records(model,parts['test'])
         write_json(args.output/(label+'-test.json'),result)
