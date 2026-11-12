@@ -44,7 +44,13 @@ func NewKafkaConsumer(brokers []string, topic, group string, store *storage.Traf
 			cache = redis.NewClient(opts)
 		}
 	}
-	return &KafkaConsumer{redisClient: cache, reader: kafka.NewReader(kafka.ReaderConfig{Brokers: brokers, Topic: topic, GroupID: group, MinBytes: 1, MaxBytes: 10e6}), store: store, graphClient: g, httpClient: &http.Client{Timeout: 5 * time.Second}, pythonAPI: api}
+	timeout := 30 * time.Second
+	if rawTimeout := os.Getenv("SENTRY_DETECTOR_TIMEOUT"); rawTimeout != "" {
+		if d, err := time.ParseDuration(rawTimeout); err == nil {
+			timeout = d
+		}
+	}
+	return &KafkaConsumer{redisClient: cache, reader: kafka.NewReader(kafka.ReaderConfig{Brokers: brokers, Topic: topic, GroupID: group, MinBytes: 1, MaxBytes: 10e6}), store: store, graphClient: g, httpClient: &http.Client{Timeout: timeout}, pythonAPI: api}
 }
 func (c *KafkaConsumer) refresh(ctx context.Context) error {
 	if time.Since(c.refreshed) < time.Minute {

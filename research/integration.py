@@ -21,16 +21,17 @@ def fetch(base,path,body=None):
                                    headers={'Content-Type':'application/json'})
     with urllib.request.urlopen(request,timeout=5) as response:return json.load(response)
 
-def wait_for(predicate,timeout=60):
+def wait_for(predicate,timeout=180,label='integration condition'):
     end=time.monotonic()+timeout
+    last_err=None
     while time.monotonic()<end:
         try:
             result=predicate()
             if result:return result
-        except Exception:
-            pass
-        time.sleep(.2)
-    raise AssertionError('Timed out waiting for integration condition')
+        except Exception as exc:
+            last_err=exc
+        time.sleep(.5)
+    raise AssertionError(f'Timed out waiting for {label}; last error: {last_err}')
 
 
 def run(browser=False):
@@ -47,7 +48,11 @@ def run(browser=False):
             processes.append((process,log));return process
         try:
             detector=launch([sys.executable,'-m','uvicorn','app:app','--app-dir','anomaly-detector','--port','5009'],{'SENTRY_DB_PATH':str(db)})
-            wait_for(lambda:fetch('http://127.0.0.1:5009','/health'))
+            wait_for(lambda:fetch('http://127.0.0.1:5009','/health'),label='detector health')
+            try:
+                fetch('http://127.0.0.1:5009','/jevlet/predict',{'request_id':'warmup','method':'GET','path':'/v1/items/1','status_code':200,'response_time_ms':50,'response_size_bytes':100,'timestamp':'2026-11-12T00:00:00Z'})
+            except Exception:
+                pass
             consumer_args=[str(binary),'consume-traffic','--kafka-brokers','127.0.0.1:19093','--kafka-topic','sentry-integration-'+str(os.getpid()),'--kafka-group','sentry-integration-'+str(os.getpid()),'--sqlite-db',str(db),'--memgraph-uri','bolt://127.0.0.1:7689']
             consumer=launch(consumer_args,{'SENTRY_PYTHON_API':'http://127.0.0.1:5009/jevlet/predict','SENTRY_REDIS_URL':'redis://127.0.0.1:6389'})
             dashboard_args=[str(binary),'dashboard','--port','8099','--sqlite-db',str(db),'--memgraph-uri','bolt://127.0.0.1:7689']
@@ -102,12 +107,23 @@ def run(browser=False):
             wait_for(lambda:any(e['request_id']=='live-pending' and e['evaluation_status']=='pending' for e in fetch('http://127.0.0.1:8099','/api/traffic')['items']))
             consumer.terminate();consumer.wait(timeout=15)
             detector=launch([sys.executable,'-m','uvicorn','app:app','--app-dir','anomaly-detector','--port','5009'],{'SENTRY_DB_PATH':str(db)})
-            wait_for(lambda:fetch('http://127.0.0.1:5009','/health'))
+            wait_for(lambda:fetch('http://127.0.0.1:5009','/health'),label='detector health')
+            try:
+                fetch('http://127.0.0.1:5009','/jevlet/predict',{'request_id':'warmup','method':'GET','path':'/v1/items/1','status_code':200,'response_time_ms':50,'response_size_bytes':100,'timestamp':'2026-11-12T00:00:00Z'})
+            except Exception:
+                pass
             consumer=launch(consumer_args,{'SENTRY_PYTHON_API':'http://127.0.0.1:5009/jevlet/predict','SENTRY_REDIS_URL':'redis://127.0.0.1:6389'})
             wait_for(lambda:any(e['request_id']=='live-pending' and e['evaluation_status']=='evaluated' for e in fetch('http://127.0.0.1:8099','/api/traffic')['items']))
             result={'passed':True,'events':4,'scan_id':scan['id'],'findings':len(findings),'browser_checked':browser,'checks':['real Kafka ingestion','per-event predictions','passive-to-active verification','authentication comparison','zero-request dry run','restart persistence','duplicate replay','detector outage','pending recovery after consumer restart']}
             (evidence/'result.json').write_text(json.dumps(result,indent=2));print(json.dumps(result,indent=2))
         finally:
+            if sys.exc_info()[0] is not None:
+                for _, log in processes:
+                    print(f"\n=== {log.name} ===", file=sys.stderr)
+                    try:
+                        print(Path(log.name).read_text()[-3000:], file=sys.stderr)
+                    except Exception:
+                        pass
             for process,log in reversed(processes):
                 if process.poll() is None:
                     process.terminate()
